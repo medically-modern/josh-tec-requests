@@ -90,6 +90,7 @@ async function startRelays() {
 }
 const ADMIN_KEY = process.env.ADMIN_KEY;
 const SHOTS = path.join(__dirname, 'shots');
+const TEMP_SVC = `[TEST] E2E Temp ${Date.now()}`;
 fs.mkdirSync(SHOTS, { recursive: true });
 
 // --- real PNG generator (same as integration tests) ---
@@ -303,22 +304,22 @@ async function step(name, fn) {
   let e2eServiceGone = false;
   await step('services view: add a service, see it on the form, then hide it', async () => {
     await page.click('#nav [data-view="services"]');
-    await page.fill('#svcName', 'E2E Temp Service');
+    await page.fill('#svcName', TEMP_SVC);
     await page.fill('#svcDesc', 'Added by the automated end-to-end test');
     await page.click('#svcAdd');
-    await page.waitForFunction(() => document.querySelector('#svcRows')?.textContent.includes('E2E Temp Service'));
+    await page.waitForFunction((name) => document.querySelector('#svcRows')?.textContent.includes(name), TEMP_SVC);
     // visible on the public form
     const p3 = await ctx.newPage();
     await p3.goto(`${SITE}/index.html`);
-    await p3.waitForFunction(() => Array.from(document.querySelectorAll('#service option')).some((o) => o.text === 'E2E Temp Service'));
+    await p3.waitForFunction((name) => Array.from(document.querySelectorAll('#service option')).some((o) => o.text === name), TEMP_SVC);
     await p3.close();
     // hide it again
-    const row = page.locator('#svcRows tr', { hasText: 'E2E Temp Service' });
+    const row = page.locator('#svcRows tr', { hasText: TEMP_SVC });
     await row.locator('[data-act="toggle"]').click();
-    await page.waitForFunction(() => {
-      const tr = Array.from(document.querySelectorAll('#svcRows tr')).find((r) => r.textContent.includes('E2E Temp Service'));
+    await page.waitForFunction((name) => {
+      const tr = Array.from(document.querySelectorAll('#svcRows tr')).find((r) => r.textContent.includes(name));
       return tr && tr.textContent.includes('Hidden');
-    });
+    }, TEMP_SVC);
     e2eServiceGone = true;
   });
 
