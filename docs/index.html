@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service Request Center — Medically Modern</title>
+<meta name="description" content="Report an issue or request a change to any Medically Modern service.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230e7490'/%3E%3Cpath d='M4 12h4l2.5-6 4 12 2.5-6h4' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <div class="logo-mark" id="logoMark"></div>
+    <div>
+      <h1>Service Request Center</h1>
+      <p class="sub">Medically Modern &middot; report an issue or request a change to any of our services</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn-sm on-dark" href="status.html">Track a ticket</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div id="apiBanner" class="banner banner-error hidden">
+    <span>&#9888;</span>
+    <div class="grow">
+      <strong>Can't reach the request server.</strong>
+      <div class="small" id="apiBannerDetail">Your submission can't be saved right now.</div>
+    </div>
+    <button class="btn btn-sm btn-ghost" id="apiRetry" type="button">Retry</button>
+  </div>
+
+  <!-- ============ FORM VIEW ============ -->
+  <form id="requestForm" novalidate>
+
+    <div id="formErrors" class="banner banner-error hidden"><span>&#9888;</span><div id="formErrorsText"></div></div>
+
+    <div class="card">
+      <h2><span class="stepnum">1</span> Which service is this about?</h2>
+      <p class="hint">Pick the service or tool your request relates to. Don't see it? Choose “Other / Not Listed” and mention it in the description.</p>
+      <div class="field" id="f-service">
+        <select id="service" required>
+          <option value="">Loading services…</option>
+        </select>
+        <div class="err-msg">Please choose a service.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="stepnum">2</span> What kind of request is this?</h2>
+      <div class="choice-grid" id="typeChoices">
+        <label class="choice" data-type="issue">
+          <input type="radio" name="rtype" value="issue">
+          <div class="c-title">&#9888;&#65039; Report an Issue</div>
+          <div class="c-desc">Something is broken, showing an error, or not working the way it should.</div>
+        </label>
+        <label class="choice" data-type="change_request">
+          <input type="radio" name="rtype" value="change_request">
+          <div class="c-title">&#10024; Request a Change</div>
+          <div class="c-desc">The software works, but you'd like an improvement, new feature, or adjustment.</div>
+        </label>
+      </div>
+      <div class="field" id="f-type"><div class="err-msg">Please choose a request type.</div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="stepnum">3</span> <span id="sevHeading">How severe is it?</span></h2>
+      <p class="hint" id="sevHint">This helps prioritize the work.</p>
+      <div class="sev-grid" id="sevChoices">
+        <label class="choice sev" data-sev="critical">
+          <input type="radio" name="severity" value="critical">
+          <div class="c-title"><span class="dot"></span> Critical</div>
+          <div class="c-desc" data-issue="Work is blocked or patients are affected. Needs attention now." data-change="Urgently needed — blocking day-to-day work.">Work is blocked or patients are affected. Needs attention now.</div>
+        </label>
+        <label class="choice sev" data-sev="high">
+          <input type="radio" name="severity" value="high">
+          <div class="c-title"><span class="dot"></span> High</div>
+          <div class="c-desc" data-issue="A major feature is broken, but there's a workaround." data-change="Important — would make a big difference soon.">A major feature is broken, but there's a workaround.</div>
+        </label>
+        <label class="choice sev" data-sev="medium">
+          <input type="radio" name="severity" value="medium">
+          <div class="c-title"><span class="dot"></span> Medium</div>
+          <div class="c-desc" data-issue="Annoying or slows you down, but manageable." data-change="Would help — no particular rush.">Annoying or slows you down, but manageable.</div>
+        </label>
+        <label class="choice sev" data-sev="low">
+          <input type="radio" name="severity" value="low">
+          <div class="c-title"><span class="dot"></span> Low</div>
+          <div class="c-desc" data-issue="Cosmetic problem, typo, or very minor glitch." data-change="Nice to have someday.">Cosmetic problem, typo, or very minor glitch.</div>
+        </label>
+      </div>
+      <div class="field" id="f-severity"><div class="err-msg">Please choose a severity level.</div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="stepnum">4</span> Tell us about it</h2>
+      <div class="field" id="f-title">
+        <label for="title">Short summary <span class="char-count" id="titleCount">0 / 200</span></label>
+        <input type="text" id="title" maxlength="200" placeholder="e.g. Appointment calendar won't load on Mondays">
+        <div class="err-msg">Please give a short summary (at least 4 characters).</div>
+      </div>
+      <div class="field" id="f-description">
+        <label for="description">Details</label>
+        <textarea id="description" maxlength="8000" placeholder="Describe what's happening and what you expected instead…"></textarea>
+        <div class="err-msg">Please add a little more detail (at least 10 characters).</div>
+      </div>
+      <div class="field hidden" id="f-steps">
+        <label for="steps">Steps to reproduce <span class="sublabel">(optional, but very helpful)</span></label>
+        <textarea id="steps" maxlength="8000" placeholder="1. Go to…&#10;2. Click…&#10;3. See error…"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="stepnum">5</span> Screenshots &amp; recordings <span class="sublabel" style="font-weight:400;font-size:13px;color:var(--muted)">(optional)</span></h2>
+      <p class="hint">A picture is worth a thousand words — attach screenshots, or paste a Loom / video link below.</p>
+
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Add screenshots">
+        <div class="dz-icon">&#128247;</div>
+        <div><strong>Click to add screenshots</strong>, drag &amp; drop, or paste from clipboard (Ctrl/Cmd+V)</div>
+        <div class="dz-hint">PNG, JPG, GIF or WebP &middot; up to 6 images &middot; 8 MB each</div>
+      </div>
+      <input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp" multiple class="hidden">
+      <div class="thumbs" id="thumbs"></div>
+
+      <div class="field mt2">
+        <label>Loom / video links <span class="sublabel">(optional)</span></label>
+        <div id="linkRows"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="addLink">+ Add another link</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="stepnum">6</span> Your info</h2>
+      <p class="hint">So we can follow up and email you once it's resolved.</p>
+      <div class="grid-2">
+        <div class="field" id="f-name">
+          <label for="name">Your name</label>
+          <input type="text" id="name" maxlength="120" placeholder="First Last" autocomplete="name">
+          <div class="err-msg">Please enter your name.</div>
+        </div>
+        <div class="field" id="f-email">
+          <label for="email">Work email</label>
+          <div class="email-join">
+            <input type="text" id="email" maxlength="80" placeholder="you" autocomplete="username" autocapitalize="off" spellcheck="false">
+            <span class="suffix">@medicallymodern.com</span>
+          </div>
+          <div class="err-msg">Please enter the first part of your @medicallymodern.com email.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="uploadProgress" class="hidden">
+        <div class="flex spread small"><span id="progressLabel">Uploading…</span><span id="progressPct">0%</span></div>
+        <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg btn-block" id="submitBtn">
+        <span id="submitLabel">Submit request</span>
+      </button>
+      <p class="small faint center mt1 mb0">You'll get a ticket number right away, plus on-screen confirmation that your screenshots arrived.</p>
+    </div>
+  </form>
+
+  <!-- ============ SUCCESS VIEW ============ -->
+  <div id="successView" class="hidden">
+    <div class="card">
+      <div class="ticket-hero">
+        <div class="check">&#10003;</div>
+        <h2 class="mt0" style="font-size:20px">Request received!</h2>
+        <div class="tnum" id="okTicket">MM-0000</div>
+        <p class="muted small">Save this ticket number — you can check its status any time.</p>
+        <p id="okEmailNote" class="small muted"></p>
+      </div>
+
+      <div class="summary-rows" id="okSummary"></div>
+
+      <div id="okShotsWrap" class="mt2 hidden">
+        <h3 style="font-size:14px">Attachment verification</h3>
+        <p class="small muted mt0">These previews are loaded back <em>from the server</em> — if you can see them below, they arrived safely.</p>
+        <div class="thumbs" id="okShots"></div>
+      </div>
+
+      <div class="flex mt3" style="justify-content:center; gap:12px; flex-wrap:wrap">
+        <a class="btn btn-ghost" id="okTrackLink" href="status.html">Track this ticket</a>
+        <button class="btn btn-primary" id="okAgain" type="button">Submit another request</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-foot">
+    Medically Modern &middot; Service Request Center<br>
+    Trouble with this form? Email <a href="mailto:josh@medicallymodern.com">josh@medicallymodern.com</a>
+  </footer>
+</main>
+
+<script src="config.js"></script>
+<script src="assets/common.js"></script>
+<script src="assets/form.js"></script>
+</body>
+</html>

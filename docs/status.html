@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Track a Ticket — Medically Modern Service Desk</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230e7490'/%3E%3Cpath d='M4 12h4l2.5-6 4 12 2.5-6h4' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <div class="logo-mark" id="logoMark"></div>
+    <div>
+      <h1>Track a Ticket</h1>
+      <p class="sub">Medically Modern &middot; check the status of your request</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn-sm on-dark" href="index.html">New request</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="card">
+    <form id="trackForm">
+      <div class="grid-2">
+        <div class="field">
+          <label for="ticket">Ticket number</label>
+          <input type="text" id="ticket" placeholder="MM-1001" autocapitalize="characters" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="email">Work email</label>
+          <div class="email-join">
+            <input type="text" id="email" placeholder="you" autocapitalize="off" spellcheck="false">
+            <span class="suffix">@medicallymodern.com</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="trackBtn" type="submit">Look up ticket</button>
+    </form>
+  </div>
+
+  <div id="trackError" class="banner banner-error hidden"><span>&#9888;</span><div id="trackErrorText"></div></div>
+
+  <div id="result" class="hidden">
+    <div class="card">
+      <div class="flex flex-wrap" style="gap:12px">
+        <div class="tnum mono" id="rTicket" style="font-size:24px;font-weight:700;color:var(--accent-dark)"></div>
+        <span id="rStatus"></span>
+        <span id="rType"></span>
+        <span id="rSev"></span>
+      </div>
+      <h2 class="mt1" id="rTitle" style="font-size:18px"></h2>
+      <div class="muted small" id="rMeta"></div>
+
+      <div id="rResolution" class="banner banner-success mt2 hidden"><span>&#10003;</span><div id="rResolutionText"></div></div>
+
+      <div class="d-section mt2" style="border:1px solid var(--border)">
+        <h4>Progress</h4>
+        <ul class="tl" id="rTimeline"></ul>
+      </div>
+
+      <div class="d-section" id="rShotsWrap" style="border:1px solid var(--border)">
+        <h4>Attachments</h4>
+        <div class="shot-grid" id="rShots"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-foot">
+    Medically Modern &middot; Service Request Center<br>
+    Trouble finding your ticket? Email <a href="mailto:josh@medicallymodern.com">josh@medicallymodern.com</a>
+  </footer>
+</main>
+
+<script src="config.js"></script>
+<script src="assets/common.js"></script>
+<script src="assets/status.js"></script>
+</body>
+</html>

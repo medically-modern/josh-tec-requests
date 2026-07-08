@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin — MM Service Desk</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23155e75'/%3E%3Cpath d='M4 12h4l2.5-6 4 12 2.5-6h4' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<!-- ============ KEY GATE ============ -->
+<div id="keyScreen" class="hidden">
+  <header class="site-header">
+    <div class="inner">
+      <div class="logo-mark" id="logoMark2"></div>
+      <div><h1>Service Desk Admin</h1><p class="sub">Medically Modern</p></div>
+    </div>
+  </header>
+  <div class="key-screen">
+    <div class="card">
+      <h2 style="font-size:17px">Enter admin key</h2>
+      <p class="hint">Use your personal admin link, or paste your admin key below.</p>
+      <div class="field">
+        <input type="text" id="keyInput" placeholder="Admin key" autocomplete="off" spellcheck="false">
+        <div class="err-msg" id="keyError">That key doesn't work.</div>
+      </div>
+      <button class="btn btn-primary btn-block" id="keyGo">Unlock dashboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DASHBOARD ============ -->
+<div id="dash" class="hidden">
+  <header class="site-header" style="padding-bottom:24px;margin-bottom:20px">
+    <div class="inner wide">
+      <div class="logo-mark" id="logoMark"></div>
+      <div>
+        <h1>Service Desk Admin</h1>
+        <p class="sub" id="dashSub">Loading…</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-sm on-dark" id="refreshBtn" type="button" title="Refresh data">&#8635; Refresh</button>
+        <button class="btn btn-sm on-dark" id="exportBtn" type="button" title="Download CSV of all requests">&#8595; Export CSV</button>
+        <a class="btn btn-sm on-dark" href="index.html" target="_blank" rel="noopener">Open form &#8599;</a>
+        <button class="btn btn-sm on-dark" id="logoutBtn" type="button" title="Forget admin key on this device">Lock</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap wide">
+    <div id="emailModeBanner" class="banner banner-warn hidden">
+      <span>&#9993;</span>
+      <div class="grow small">
+        <strong>Automatic email is not configured yet.</strong>
+        When you mark a request complete, you'll get a one-click “compose email” button instead — or add a
+        <span class="mono">RESEND_API_KEY</span> / SMTP settings on Railway to enable fully automatic notifications (see README).
+      </div>
+    </div>
+
+    <nav class="admin-nav" id="nav">
+      <button data-view="inbox" class="active">&#128229; Inbox <span class="count" id="cInbox">0</span></button>
+      <button data-view="board">&#128203; Board</button>
+      <button data-view="done">&#9989; Completed <span class="count" id="cDone">0</span></button>
+      <button data-view="analytics">&#128200; Analytics</button>
+      <button data-view="services">&#128736; Services</button>
+    </nav>
+
+    <!-- Inbox -->
+    <section id="view-inbox">
+      <div class="filter-bar">
+        <input type="search" id="fSearch" placeholder="Search tickets, titles, names…">
+        <select id="fService"><option value="">All services</option></select>
+        <select id="fType">
+          <option value="">All types</option>
+          <option value="issue">Issues</option>
+          <option value="change_request">Change requests</option>
+        </select>
+        <select id="fSeverity">
+          <option value="">All severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <select id="fStatus">
+          <option value="active">Open + In progress</option>
+          <option value="open">Open only</option>
+          <option value="in_progress">In progress only</option>
+          <option value="">Everything</option>
+        </select>
+      </div>
+      <div class="card" style="padding:6px 14px">
+        <div class="table-scroll">
+          <table class="req-table">
+            <thead><tr>
+              <th>Ticket</th><th>Severity</th><th>Type</th><th>Title</th><th>Service</th><th>From</th><th>&#128206;</th><th>Age</th><th>Status</th>
+            </tr></thead>
+            <tbody id="inboxRows"></tbody>
+          </table>
+        </div>
+        <div id="inboxEmpty" class="empty-state hidden">
+          <div class="big">&#127881;</div>
+          <strong>Inbox zero!</strong><br>No requests match these filters.
+        </div>
+      </div>
+    </section>
+
+    <!-- Board -->
+    <section id="view-board" class="hidden">
+      <div class="kanban">
+        <div class="col"><h3>Open <span id="kOpenN"></span></h3><div id="kOpen"></div></div>
+        <div class="col"><h3>In progress <span id="kProgN"></span></h3><div id="kProg"></div></div>
+        <div class="col"><h3>Recently completed <span id="kDoneN"></span></h3><div id="kDone"></div></div>
+      </div>
+    </section>
+
+    <!-- Completed -->
+    <section id="view-done" class="hidden">
+      <div class="card" style="padding:6px 14px">
+        <div class="table-scroll">
+          <table class="req-table">
+            <thead><tr>
+              <th>Ticket</th><th>Type</th><th>Title</th><th>Service</th><th>From</th><th>Completed</th><th>Submitter notified?</th><th>Status</th>
+            </tr></thead>
+            <tbody id="doneRows"></tbody>
+          </table>
+        </div>
+        <div id="doneEmpty" class="empty-state hidden">
+          <div class="big">&#128564;</div>
+          Nothing completed yet — finished requests land here.
+        </div>
+      </div>
+    </section>
+
+    <!-- Analytics -->
+    <section id="view-analytics" class="hidden">
+      <div class="stat-tiles" id="statTiles"></div>
+      <div class="grid-2">
+        <div class="card">
+          <h2 style="font-size:15px">Requests by service</h2>
+          <div id="chartService"></div>
+        </div>
+        <div class="card">
+          <h2 style="font-size:15px">By severity</h2>
+          <div id="chartSeverity"></div>
+          <h2 style="font-size:15px" class="mt3">By type</h2>
+          <div id="chartType"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2 style="font-size:15px">Submissions — last 30 days</h2>
+        <div class="mini-chart" id="chart30"></div>
+      </div>
+    </section>
+
+    <!-- Services -->
+    <section id="view-services" class="hidden">
+      <div class="card">
+        <h2 style="font-size:15px">Add a service</h2>
+        <p class="hint">The list employees pick from — grows with your business.</p>
+        <div class="flex flex-wrap" style="align-items:flex-end">
+          <div class="field grow mb0" style="min-width:180px">
+            <label for="svcName">Name</label>
+            <input type="text" id="svcName" maxlength="120" placeholder="e.g. Lab Results Portal">
+          </div>
+          <div class="field grow mb0" style="min-width:220px">
+            <label for="svcDesc">Description <span class="sublabel">(optional)</span></label>
+            <input type="text" id="svcDesc" maxlength="500" placeholder="Shown to help employees pick the right one">
+          </div>
+          <button class="btn btn-primary" id="svcAdd" type="button">Add service</button>
+        </div>
+      </div>
+      <div class="card" style="padding:6px 14px">
+        <div class="table-scroll">
+          <table class="req-table">
+            <thead><tr><th>Service</th><th>Description</th><th>Requests</th><th>Status</th><th style="width:190px">Actions</th></tr></thead>
+            <tbody id="svcRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Drawer -->
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer" aria-label="Request details">
+  <div class="d-head">
+    <div>
+      <div class="flex" style="gap:8px">
+        <span class="mono" id="dTicket" style="font-weight:700;color:var(--accent-dark)"></span>
+        <span id="dStatus"></span>
+      </div>
+      <div class="small muted" id="dCreated"></div>
+    </div>
+    <button class="d-close" id="drawerClose" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="d-body" id="drawerBody"></div>
+</aside>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox"><img id="lightboxImg" alt=""></div>
+
+<!-- Complete / decline modal -->
+<div class="modal-back" id="modalBack">
+  <div class="modal">
+    <h3 id="modalTitle">Mark as completed</h3>
+    <p class="hint" id="modalHint">Add a short note about what was done — it's included in the email to the submitter.</p>
+    <div class="field">
+      <textarea id="modalNote" placeholder="What was fixed / changed…"></textarea>
+    </div>
+    <label class="flex small" style="gap:8px;cursor:pointer">
+      <input type="checkbox" id="modalNotify" checked style="width:auto">
+      <span id="modalNotifyLabel">Notify submitter by email</span>
+    </label>
+    <div class="m-actions">
+      <button class="btn btn-ghost" id="modalCancel" type="button">Cancel</button>
+      <button class="btn btn-success" id="modalOk" type="button">Mark completed</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="assets/common.js"></script>
+<script src="assets/admin.js"></script>
+</body>
+</html>

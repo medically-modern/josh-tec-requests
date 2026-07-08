@@ -1,0 +1,139 @@
+'use strict';
+
+const { Pool } = require('pg');
+
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error('FATAL: DATABASE_URL is not set');
+  process.exit(1);
+}
+
+// Railway internal hostnames don't use TLS; public endpoints do.
+function needsSsl(url) {
+  try {
+    const host = new URL(url).hostname;
+    return !(host.endsWith('.railway.internal') || host === 'localhost' || host === '127.0.0.1');
+  } catch {
+    return true;
+  }
+}
+
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: needsSsl(DATABASE_URL) ? { rejectUnauthorized: false } : false,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+});
+
+pool.on('error', (err) => {
+  console.error('Unexpected idle client error:', err.message);
+});
+
+const MIGRATIONS = `
+CREATE TABLE IF NOT EXISTS services (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE SEQUENCE IF NOT EXISTS ticket_seq START 1001;
+
+CREATE TABLE IF NOT EXISTS requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket VARCHAR(24) NOT NULL UNIQUE,
+  service_id UUID NOT NULL REFERENCES services(id),
+  type TEXT NOT NULL CHECK (type IN ('issue', 'change_request')),
+  severity TEXT NOT NULL CHECK (severity IN ('critical', 'high', 'medium', 'low')),
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  steps TEXT NOT NULL DEFAULT '',
+  video_links JSONB NOT NULL DEFAULT '[]',
+  submitter_name TEXT NOT NULL,
+  submitter_email TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'completed', 'declined')),
+  resolution_note TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at TIMESTAMPTZ,
+  notified_at TIMESTAMPTZ,
+  notify_status TEXT NOT NULL DEFAULT 'none'
+);
+
+CREATE INDEX IF NOT EXISTS idx_requests_status ON requests (status);
+CREATE INDEX IF NOT EXISTS idx_requests_service ON requests (service_id);
+CREATE INDEX IF NOT EXISTS idx_requests_created ON requests (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS screenshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_id UUID NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size_bytes INT NOT NULL,
+  data BYTEA NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_screenshots_request ON screenshots (request_id);
+
+CREATE TABLE IF NOT EXISTS activity (
+  id BIGSERIAL PRIMARY KEY,
+  request_id UUID NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  actor TEXT NOT NULL DEFAULT 'system',
+  action TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_request ON activity (request_id);
+`;
+
+const DEFAULT_SERVICES = [
+  ['Patient Portal', 'Patient-facing portal and account tools', 10],
+  ['Scheduling System', 'Appointment booking and calendar tools', 20],
+  ['Billing & Claims', 'Invoicing, claims, and payment tools', 30],
+  ['Provider Dashboard', 'Internal provider-facing dashboard', 40],
+  ['Company Website', 'Public medicallymodern.com website', 50],
+  ['Internal Tools', 'Automations, scripts, and internal utilities', 60],
+  ['Other / Not Listed', 'Anything that does not fit an existing service', 999],
+];
+
+async function connectWithRetry(attempts = 30, delayMs = 2000) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const client = await pool.connect();
+      client.release();
+      return;
+    } catch (err) {
+      console.log(`DB connect attempt ${i}/${attempts} failed: ${err.message}`);
+      if (i === attempts) throw err;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+}
+
+async function migrate() {
+  await connectWithRetry();
+  await pool.query(MIGRATIONS);
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM services');
+  if (rows[0].n === 0) {
+    for (const [name, description, sort] of DEFAULT_SERVICES) {
+      await pool.query(
+        'INSERT INTO services (name, description, sort_order) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING',
+        [name, description, sort]
+      );
+    }
+    console.log(`Seeded ${DEFAULT_SERVICES.length} starter services (editable in the admin dashboard)`);
+  }
+  console.log('Database migrated and ready');
+}
+
+async function nextTicket() {
+  const { rows } = await pool.query("SELECT nextval('ticket_seq') AS n");
+  return `MM-${rows[0].n}`;
+}
+
+module.exports = { pool, migrate, nextTicket };
