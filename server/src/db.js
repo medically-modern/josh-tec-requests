@@ -131,8 +131,10 @@ async function migrate() {
   console.log('Database migrated and ready');
 }
 
-async function nextTicket() {
-  const { rows } = await pool.query("SELECT nextval('ticket_seq') AS n");
+// Accepts the transaction's client so a held connection never has to wait
+// on a second one from the same pool (deadlock risk under submission bursts).
+async function nextTicket(q = pool) {
+  const { rows } = await q.query("SELECT nextval('ticket_seq') AS n");
   return `MM-${rows[0].n}`;
 }
 

@@ -16,14 +16,22 @@ const ACTION_LABEL = {
 
 async function lookup() {
   const ticket = $('#ticket').value.trim().toUpperCase();
-  const email = `${$('#email').value.trim()}@medicallymodern.com`.toLowerCase();
+  // Accept either the prefix or a full pasted @medicallymodern.com address
+  let prefix = $('#email').value.trim().replace(/@medicallymodern\.com$/i, '');
   const errBox = $('#trackError');
   errBox.classList.add('hidden');
-  if (!ticket || $('#email').value.trim().length < 1) {
+  if (!ticket || prefix.length < 1) {
     $('#trackErrorText').textContent = 'Enter both your ticket number and your email.';
     errBox.classList.remove('hidden');
     return;
   }
+  if (prefix.includes('@')) {
+    $('#trackErrorText').textContent = 'Please use your @medicallymodern.com email (just the part before the @).';
+    errBox.classList.remove('hidden');
+    return;
+  }
+  $('#email').value = prefix;
+  const email = `${prefix}@medicallymodern.com`.toLowerCase();
   const btn = $('#trackBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Looking up…';

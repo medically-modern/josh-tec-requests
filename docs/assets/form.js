@@ -75,6 +75,7 @@ const fileInput = $('#fileInput');
 
 function addFiles(list) {
   const incoming = Array.from(list || []);
+  let added = 0;
   for (const f of incoming) {
     if (!OK_TYPES.includes(f.type)) {
       toast(`"${f.name}" skipped — only PNG, JPG, GIF or WebP images are supported.`, 'err');
@@ -93,8 +94,10 @@ function addFiles(list) {
       continue;
     }
     files.push({ file: f, previewUrl: URL.createObjectURL(f) });
+    added++;
   }
   renderThumbs();
+  return added;
 }
 
 function renderThumbs() {
@@ -126,6 +129,10 @@ fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInpu
 ['dragleave', 'drop'].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove('drag'); }));
 dropzone.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
 
+// A drop that misses the dropzone must never navigate away and destroy the form
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => e.preventDefault());
+
 document.addEventListener('paste', (e) => {
   if ($('#successView').classList.contains('hidden') === false) return;
   const items = Array.from(e.clipboardData?.items || []);
@@ -133,8 +140,8 @@ document.addEventListener('paste', (e) => {
   if (imgs.length) {
     // Give pasted images a friendlier name than "image.png"
     const named = imgs.map((f, idx) => new File([f], `pasted-screenshot-${Date.now()}-${idx + 1}.${(f.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, { type: f.type }));
-    addFiles(named);
-    toast(`${named.length} screenshot${named.length > 1 ? 's' : ''} pasted from clipboard.`, 'ok');
+    const added = addFiles(named);
+    if (added > 0) toast(`${added} screenshot${added > 1 ? 's' : ''} pasted from clipboard.`, 'ok');
   }
 });
 

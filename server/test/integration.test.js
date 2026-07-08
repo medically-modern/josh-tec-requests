@@ -215,6 +215,27 @@ async function j(res) {
     assert.strictEqual(badKey.status, 401);
   });
 
+  await test('admin key is NOT accepted via query param (log-leak vector removed)', async () => {
+    const res = await fetch(`${API}/api/admin/requests?key=${encodeURIComponent(ADMIN_KEY)}`);
+    assert.strictEqual(res.status, 401);
+  });
+
+  await test('malformed / non-UUID ids return 404, never 500', async () => {
+    for (const url of [
+      `${API}/api/screenshots/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`,
+      `${API}/api/screenshots/not-a-uuid`,
+    ]) {
+      const res = await fetch(url);
+      assert.strictEqual(res.status, 404, `${url} -> ${res.status}`);
+    }
+    for (const path of ['/api/admin/requests/foo', '/api/admin/requests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa']) {
+      const res = await fetch(`${API}${path}`, { headers: adminHeaders });
+      assert.strictEqual(res.status, 404, `${path} -> ${res.status}`);
+    }
+    const del = await fetch(`${API}/api/admin/requests/------------------------------------`, { method: 'DELETE', headers: adminHeaders });
+    assert.strictEqual(del.status, 404);
+  });
+
   await test('admin list includes the new request with screenshot_count', async () => {
     const res = await fetch(`${API}/api/admin/requests`, { headers: adminHeaders });
     const data = await j(res);
@@ -312,6 +333,25 @@ async function j(res) {
     const csv = await res.text();
     assert.ok(csv.includes(created.ticket));
     assert.ok(csv.split('\r\n')[0].startsWith('ticket,service,type'));
+  });
+
+  await test('CSV export neutralizes spreadsheet formula injection', async () => {
+    const res = await fetch(`${API}/api/requests`, {
+      method: 'POST',
+      body: fd({
+        service_id: serviceId, type: 'issue', severity: 'low',
+        title: '=HYPERLINK("http://evil.example","click me") formula test',
+        description: 'CSV injection regression test for the export endpoint.',
+        submitter_name: 'Formula Tester', submitter_email: 'formula@medicallymodern.com',
+      }),
+    });
+    const data = await j(res);
+    assert.strictEqual(res.status, 201);
+    createdIds.push(data.request.id);
+    const csv = await (await fetch(`${API}/api/admin/export.csv`, { headers: adminHeaders })).text();
+    const line = csv.split('\r\n').find((l) => l.includes('formula test'));
+    assert.ok(line, 'exported row missing');
+    assert.ok(line.includes(`"'=HYPERLINK`), `formula not neutralized: ${line.slice(0, 80)}`);
   });
 
   let newServiceId;

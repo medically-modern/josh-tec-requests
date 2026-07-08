@@ -5,7 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const { pool, migrate, nextTicket } = require('./db');
-const { emailMode, sendEmail, receiptEmail, completionEmail } = require('./email');
+const { emailMode, sendEmail, receiptEmail, completionEmail, adminNewRequestEmail } = require('./email');
 
 const PORT = Number(process.env.PORT || 3000);
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -74,7 +74,8 @@ function timingSafeEq(a, b) {
   return crypto.timingSafeEqual(ha, hb);
 }
 function requireAdmin(req, res, next) {
-  const key = req.get('x-admin-key') || req.query.key || '';
+  // Header only — a query-param key would leak into access logs and history.
+  const key = req.get('x-admin-key') || '';
   if (!key || !timingSafeEq(key, ADMIN_KEY)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -110,6 +111,8 @@ const TYPES = new Set(['issue', 'change_request']);
 const SEVERITIES = new Set(['critical', 'high', 'medium', 'low']);
 const STATUSES = new Set(['open', 'in_progress', 'completed', 'declined']);
 const EMAIL_RE = /^[a-z0-9._%+-]+@medicallymodern\.com$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (s) => UUID_RE.test(String(s || ''));
 
 function clean(s, max) {
   return String(s ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -169,6 +172,7 @@ function publicRequest(row, screenshots) {
 }
 
 async function getRequestFull(id, byTicket = false) {
+  if (!byTicket && !isUuid(id)) return null;
   const where = byTicket ? 'r.ticket = $1' : 'r.id = $1';
   const { rows } = await pool.query(
     `SELECT r.*, s.name AS service_name FROM requests r JOIN services s ON s.id = r.service_id WHERE ${where}`,
@@ -206,7 +210,7 @@ app.get('/api/health', asyncRoute(async (req, res) => {
   res.status(db ? 200 : 503).json({ ok: db, db, email_mode: emailMode(), version: VERSION, time: new Date().toISOString() });
 }));
 
-app.get('/api/services', rateLimit('read', 120, 60000), asyncRoute(async (req, res) => {
+app.get('/api/services', rateLimit('services', 120, 60000), asyncRoute(async (req, res) => {
   const { rows } = await pool.query(
     'SELECT id, name, description FROM services WHERE active = TRUE ORDER BY sort_order, name'
   );
@@ -251,6 +255,7 @@ app.post(
     if (!EMAIL_RE.test(submitterEmail)) errors.push('Email must be a valid @medicallymodern.com address.');
     if (errors.length) return res.status(400).json({ error: errors.join(' '), errors });
 
+    if (!isUuid(serviceId)) return res.status(400).json({ error: 'That service was not found — refresh the page and pick again.' });
     const svc = await pool.query('SELECT id, name FROM services WHERE id = $1 AND active = TRUE', [serviceId]);
     if (!svc.rows.length) return res.status(400).json({ error: 'That service was not found — refresh the page and pick again.' });
 
@@ -268,7 +273,7 @@ app.post(
     let created;
     try {
       await client.query('BEGIN');
-      const ticket = await nextTicket();
+      const ticket = await nextTicket(client);
       const ins = await client.query(
         `INSERT INTO requests
            (ticket, service_id, type, severity, title, description, steps, video_links, submitter_name, submitter_email)
@@ -304,6 +309,15 @@ app.post(
       if (receipt.sent) await logActivity(created.id, 'system', 'email_sent', 'Receipt email sent to submitter');
     } catch { /* already logged inside sendEmail */ }
 
+    // Best-effort new-request alert to the admin
+    const adminEmail = (process.env.ADMIN_NOTIFY_EMAIL || '').trim();
+    if (adminEmail) {
+      try {
+        const alert = await sendEmail(adminNewRequestEmail(full, adminEmail));
+        if (alert.sent) await logActivity(created.id, 'system', 'email_sent', `New-request alert sent to ${adminEmail}`);
+      } catch { /* already logged inside sendEmail */ }
+    }
+
     res.status(201).json({ request: full, receipt_email: { mode: receipt.mode, sent: receipt.sent } });
   })
 );
@@ -311,7 +325,7 @@ app.post(
 // Publicly readable by unguessable UUID (used by the form's "server-verified" echo)
 app.get('/api/screenshots/:id', asyncRoute(async (req, res) => {
   const id = clean(req.params.id, 60);
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Bad id' });
+  if (!isUuid(id)) return res.status(404).json({ error: 'Not found' });
   const { rows } = await pool.query('SELECT filename, mime, size_bytes, data FROM screenshots WHERE id = $1', [id]);
   if (!rows.length) return res.status(404).json({ error: 'Not found' });
   const s = rows[0];
@@ -326,7 +340,7 @@ app.get('/api/screenshots/:id', asyncRoute(async (req, res) => {
 }));
 
 // Ticket tracking for submitters (requires matching ticket + email)
-app.get('/api/track', rateLimit('read', 60, 60000), asyncRoute(async (req, res) => {
+app.get('/api/track', rateLimit('track', 20, 60000), asyncRoute(async (req, res) => {
   const ticket = clean(req.query.ticket, 24).toUpperCase();
   const email = clean(req.query.email, 160).toLowerCase();
   if (!ticket || !email) return res.status(400).json({ error: 'Ticket number and email are required.' });
@@ -356,7 +370,7 @@ admin.get('/requests', asyncRoute(async (req, res) => {
   const status = clean(req.query.status, 20);
   if (status && STATUSES.has(status)) add('r.status = ?', status);
   const service = clean(req.query.service_id, 60);
-  if (service) add('r.service_id = ?', service);
+  if (service && isUuid(service)) add('r.service_id = ?', service);
   const type = clean(req.query.type, 20);
   if (type && TYPES.has(type)) add('r.type = ?', type);
   const severity = clean(req.query.severity, 20);
@@ -489,6 +503,7 @@ admin.post('/requests/:id/notify', asyncRoute(async (req, res) => {
 
 admin.delete('/requests/:id', asyncRoute(async (req, res) => {
   const id = clean(req.params.id, 60);
+  if (!isUuid(id)) return res.status(404).json({ error: 'Not found' });
   const { rowCount } = await pool.query('DELETE FROM requests WHERE id = $1', [id]);
   if (!rowCount) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true });
@@ -524,6 +539,7 @@ admin.post('/services', asyncRoute(async (req, res) => {
 
 admin.patch('/services/:id', asyncRoute(async (req, res) => {
   const id = clean(req.params.id, 60);
+  if (!isUuid(id)) return res.status(404).json({ error: 'Not found' });
   const b = req.body || {};
   const updates = [];
   const params = [];
@@ -585,7 +601,9 @@ admin.get('/export.csv', asyncRoute(async (req, res) => {
   );
   const cols = ['ticket', 'service', 'type', 'severity', 'status', 'title', 'description', 'submitter_name', 'submitter_email', 'created_at', 'completed_at', 'resolution_note'];
   const escCsv = (v) => {
-    const s = v === null || v === undefined ? '' : v instanceof Date ? v.toISOString() : String(v);
+    let s = v === null || v === undefined ? '' : v instanceof Date ? v.toISOString() : String(v);
+    // Neutralize spreadsheet formula injection (=, +, -, @, tab at cell start)
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const csv = [cols.join(','), ...rows.map((r) => cols.map((c) => escCsv(r[c])).join(','))].join('\r\n');

@@ -149,4 +149,46 @@ function completionEmail(req) {
   return { to: req.submitter_email, subject, text, html };
 }
 
-module.exports = { emailMode, sendEmail, receiptEmail, completionEmail };
+const SEV_ICON = { critical: '\u{1F534}', high: '\u{1F7E0}', medium: '\u{1F7E1}', low: '⚪' };
+
+// At-a-glance alert to the admin for every new submission.
+// Subject: 🔴 Critical Issue · Patient Portal — “Calendar won't load” · Sarah (MM-1042)
+function adminNewRequestEmail(req, adminEmail) {
+  const base = baseUrl();
+  const icon = SEV_ICON[req.severity] || '';
+  const typeWord = req.type === 'issue' ? 'Issue' : 'Change';
+  const subject = `${icon} ${SEVERITY_LABELS[req.severity]} ${typeWord} · ${req.service_name} — “${req.title}” · ${req.submitter_name} (${req.ticket})`;
+  const adminLink = base ? `${base}/admin.html?req=${encodeURIComponent(req.id)}` : '';
+  const shots = (req.screenshots || []).length;
+  const links = (req.video_links || []).length;
+  const text = [
+    `New ${TYPE_LABELS[req.type].toLowerCase()} — ${req.ticket}`,
+    '',
+    `Service:     ${req.service_name}`,
+    `Severity:    ${SEVERITY_LABELS[req.severity]}`,
+    `From:        ${req.submitter_name} <${req.submitter_email}>`,
+    `Attachments: ${shots} screenshot(s), ${links} video link(s)`,
+    '',
+    'Description:',
+    req.description,
+    req.steps ? `\nSteps to reproduce:\n${req.steps}` : '',
+    (req.video_links || []).length ? `\nVideo links:\n${req.video_links.join('\n')}` : '',
+    adminLink ? `\nOpen in dashboard: ${adminLink}` : '',
+  ].join('\n');
+  const html = wrapHtml(`
+    <p style="margin-top:0"><strong>${esc(icon)} New ${esc(TYPE_LABELS[req.type].toLowerCase())}</strong> &middot; <span style="font-family:monospace">${esc(req.ticket)}</span></p>
+    <table style="border-collapse:collapse;font-size:14px;">
+      <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Service</td><td>${esc(req.service_name)}</td></tr>
+      <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Severity</td><td>${esc(SEVERITY_LABELS[req.severity])}</td></tr>
+      <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Title</td><td><strong>${esc(req.title)}</strong></td></tr>
+      <tr><td style="padding:4px 16px 4px 0;color:#64748b;">From</td><td>${esc(req.submitter_name)} &lt;${esc(req.submitter_email)}&gt;</td></tr>
+      <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Attachments</td><td>${shots} screenshot(s), ${links} video link(s)</td></tr>
+    </table>
+    <p style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;white-space:pre-wrap;">${esc(req.description)}</p>
+    ${req.steps ? `<p style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;white-space:pre-wrap;"><strong>Steps:</strong>\n${esc(req.steps)}</p>` : ''}
+    ${(req.video_links || []).map((l) => `<div><a href="${esc(l)}">${esc(l)}</a></div>`).join('')}
+    ${adminLink ? `<p><a href="${esc(adminLink)}" style="color:#0f766e;font-weight:600;">Open in dashboard &rarr;</a></p>` : ''}`);
+  return { to: adminEmail, subject, text, html };
+}
+
+module.exports = { emailMode, sendEmail, receiptEmail, completionEmail, adminNewRequestEmail };

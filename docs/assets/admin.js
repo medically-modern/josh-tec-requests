@@ -18,7 +18,7 @@ let emailMode = 'manual';
   const hash = window.location.hash.replace(/^#/, '');
   const fromHash = hash.startsWith('key=') ? hash.slice(4) : hash;
   if (fromHash && fromHash.length >= 16) {
-    adminKey = decodeURIComponent(fromHash);
+    try { adminKey = decodeURIComponent(fromHash); } catch { adminKey = fromHash; }
     try { localStorage.setItem(KEY_STORE, adminKey); } catch { /* private mode */ }
     history.replaceState(null, '', window.location.pathname + window.location.search);
   } else {
@@ -64,6 +64,12 @@ async function boot() {
   }
   $('#keyScreen').classList.add('hidden');
   $('#dash').classList.remove('hidden');
+  // Deep link from notification emails: admin.html?req=<id>
+  const reqId = new URLSearchParams(window.location.search).get('req');
+  if (reqId) {
+    history.replaceState(null, '', window.location.pathname);
+    openDetail(reqId);
+  }
 }
 
 async function refreshAll(silent) {
@@ -269,12 +275,19 @@ async function renderAnalytics() {
   const typeColor = (t) => (t === 'issue' ? '#be123c' : 'var(--indigo)');
   $('#chartType').innerHTML = barRows(stats.by_type, 'type', typeColor);
 
-  // last 30 days sparkbars
-  const byDay = new Map(stats.last_30_days.map((r) => [String(r.day).slice(0, 10), r.n]));
+  // last 30 days sparkbars — bucketed by the admin's LOCAL calendar day
+  const localKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const byDay = new Map();
+  const cutoff = Date.now() - 30 * 86400000;
+  allRequests.forEach((r) => {
+    const t = new Date(r.created_at);
+    if (t.getTime() < cutoff) return;
+    const key = localKey(t);
+    byDay.set(key, (byDay.get(key) || 0) + 1);
+  });
   const days = [];
   for (let i = 29; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000);
-    const key = d.toISOString().slice(0, 10);
+    const key = localKey(new Date(Date.now() - i * 86400000));
     days.push({ key, n: byDay.get(key) || 0 });
   }
   const maxD = Math.max(1, ...days.map((d) => d.n));

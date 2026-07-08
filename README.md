@@ -53,6 +53,14 @@ The API supports three modes (checked in this order):
 
 Receipt emails on submission and completion emails on fix use the same mechanism.
 
+**Admin alerts**: with `ADMIN_NOTIFY_EMAIL` set (currently `josh@medicallymodern.com`), every new submission sends an
+at-a-glance alert as soon as an email provider is configured:
+
+> 🔴 Critical Issue · Patient Portal — “Calendar won't load” · Sarah (MM-1042)
+
+The alert body contains the full description, attachment counts, video links, and a deep link that opens the ticket
+directly in the admin dashboard.
+
 ## Railway environment variables (`api` service)
 
 | Variable | Purpose |
@@ -61,6 +69,7 @@ Receipt emails on submission and completion emails on fix use the same mechanism
 | `ADMIN_KEY` | the admin dashboard key (keep secret) |
 | `ALLOWED_ORIGINS` | CORS allowlist, the GitHub Pages origin |
 | `PUBLIC_BASE_URL` | Pages URL, used for links inside emails |
+| `ADMIN_NOTIFY_EMAIL` | where new-submission alerts go (josh@medicallymodern.com) |
 | `RESEND_API_KEY` / `SMTP_*` / `EMAIL_FROM` | optional, enables automatic email |
 
 ## Local development
