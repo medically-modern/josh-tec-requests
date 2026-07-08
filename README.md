@@ -13,15 +13,15 @@ An internal system for employees to **report issues** and **request changes** to
 ## Architecture
 
 ```
-GitHub Pages (docs/)  ──HTTPS──▶  Railway "josh-tec-requests" project
-  index / status / admin              └── api  (Node.js + Express)
-                                      └── Postgres  (requests, screenshots as BYTEA,
+GitHub Pages (repo root) ──HTTPS──▶  Railway "handsome-simplicity" project
+  index / status / admin              └── service-desk-api  (Node.js + Express)
+                                      └── service-desk-db  (requests, screenshots as BYTEA,
                                                      services, activity log)
 ```
 
-- **Frontend**: static, zero-dependency vanilla JS in `docs/`, deployed by `.github/workflows/pages.yml`.
+- **Frontend**: static, zero-dependency vanilla JS at the repo root, published automatically by GitHub Pages (deploy-from-branch `main`, `/` root, `.nojekyll`).
 - **Backend**: `server/`, deployed on Railway. Screenshots are stored **in Postgres** (not on disk), so deploys/restarts never lose attachments.
-- `docs/config.js` points the frontend at the Railway API URL.
+- `config.js` points the frontend at the Railway API URL.
 
 ## Key features
 
@@ -78,7 +78,7 @@ directly in the admin dashboard.
 cd server
 npm install
 DATABASE_URL=postgres://… ADMIN_KEY=devkey node src/index.js
-# then open docs/index.html with config.js pointed at http://localhost:3000
+# then open index.html with config.js pointed at http://localhost:3000
 ```
 
 `server/test/integration.test.js` runs a full lifecycle test (submit with real images → verify stored bytes → admin flows → complete → track):
@@ -89,7 +89,7 @@ API_URL=http://localhost:3000 ADMIN_KEY=devkey node server/test/integration.test
 
 ## Operations
 
-- **Deploy backend**: `railway up ./server --service api` (project `josh-tec-requests`)
-- **Deploy frontend**: push to `main` — the Pages workflow redeploys `docs/`
+- **Deploy backend**: `railway up --service service-desk-api` from the repo root (project `handsome-simplicity`)
+- **Deploy frontend**: push to `main` — GitHub Pages republishes automatically
 - **Rotate the admin key**: change `ADMIN_KEY` on Railway, then use the new key link
-- **Data**: everything lives in the Railway Postgres service in the `josh-tec-requests` project
+- **Data**: everything lives in the `service-desk-db` Postgres service in the `handsome-simplicity` project

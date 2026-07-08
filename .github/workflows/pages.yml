@@ -1,9 +1,9 @@
-name: Deploy GitHub Pages
+# Manual fallback deploy. The live site uses Pages "Deploy from a branch"
+# (main, / root) with .nojekyll, which publishes automatically on every push.
+# If the Pages source is ever switched to "GitHub Actions", run this manually.
+name: Deploy GitHub Pages (manual fallback)
 
 on:
-  push:
-    branches: [main]
-    paths: ['docs/**']
   workflow_dispatch:
 
 permissions:
@@ -25,12 +25,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: .
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
