@@ -307,6 +307,7 @@ function renderServices() {
       <td>
         <button class="btn btn-ghost btn-sm" data-act="rename">Rename</button>
         <button class="btn btn-ghost btn-sm" data-act="toggle">${s.active ? 'Hide' : 'Show'}</button>
+        ${!s.request_count ? '<button class="btn btn-danger btn-sm" data-act="del">Delete</button>' : ''}
       </td>
     </tr>`).join('');
   $$('#svcRows button').forEach((b) => {
@@ -320,6 +321,10 @@ function renderServices() {
           if (!name || name === svc.name) return;
           await adminApi(`/api/admin/services/${id}`, { method: 'PATCH', body: { name } });
           toast('Service renamed', 'ok');
+        } else if (b.dataset.act === 'del') {
+          if (!confirm(`Delete "${svc.name}"? (Only possible while it has no requests.)`)) return;
+          await adminApi(`/api/admin/services/${id}`, { method: 'DELETE' });
+          toast(`Service "${svc.name}" deleted`, 'ok');
         } else {
           await adminApi(`/api/admin/services/${id}`, { method: 'PATCH', body: { active: !svc.active } });
           toast(svc.active ? 'Service hidden from the form' : 'Service visible again', 'ok');

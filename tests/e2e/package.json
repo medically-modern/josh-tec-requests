@@ -1,0 +1,11 @@
+{
+  "name": "mm-service-desk-e2e",
+  "private": true,
+  "description": "Browser end-to-end tests against the live deployed Service Desk",
+  "scripts": {
+    "test": "node e2e.test.js"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

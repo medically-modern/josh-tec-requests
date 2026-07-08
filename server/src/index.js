@@ -570,6 +570,19 @@ admin.patch('/services/:id', asyncRoute(async (req, res) => {
   }
 }));
 
+// Only services with no requests can be deleted; others should be hidden instead
+admin.delete('/services/:id', asyncRoute(async (req, res) => {
+  const id = clean(req.params.id, 60);
+  if (!isUuid(id)) return res.status(404).json({ error: 'Not found' });
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM requests WHERE service_id = $1', [id]);
+  if (rows[0].n > 0) {
+    return res.status(409).json({ error: 'This service has requests attached — hide it instead of deleting.' });
+  }
+  const { rowCount } = await pool.query('DELETE FROM services WHERE id = $1', [id]);
+  if (!rowCount) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+}));
+
 admin.get('/stats', asyncRoute(async (req, res) => {
   const [byStatus, byService, bySeverity, byType, recent, resolution] = await Promise.all([
     pool.query('SELECT status, COUNT(*)::int AS n FROM requests GROUP BY status'),
