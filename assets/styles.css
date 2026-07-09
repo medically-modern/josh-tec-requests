@@ -339,20 +339,22 @@ table.req-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   opacity: 0; pointer-events: none; transition: opacity .2s;
 }
 .overlay.show { opacity: 1; pointer-events: auto; }
+/* Full-page detail view (slides up over the whole window) */
 .drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 96vw); z-index: 600;
+  position: fixed; inset: 0; width: 100%; z-index: 600;
   background: var(--bg); box-shadow: var(--shadow-lg);
-  transform: translateX(105%); transition: transform .22s ease;
+  transform: translateY(100%); transition: transform .24s ease;
   display: flex; flex-direction: column;
 }
 .drawer.show { transform: none; }
 .drawer .d-head {
-  background: #fff; border-bottom: 1px solid var(--border); padding: 16px 22px;
+  background: #fff; border-bottom: 1px solid var(--border);
+  padding: 16px max(22px, calc((100% - 940px) / 2));
   display: flex; align-items: center; gap: 12px; flex: none;
 }
-.drawer .d-body { overflow-y: auto; padding: 18px 22px 40px; flex: 1; }
+.drawer .d-body { overflow-y: auto; padding: 22px max(22px, calc((100% - 940px) / 2)) 80px; flex: 1; }
 .drawer .d-close {
-  margin-left: auto; border: none; background: #f0f3f6; width: 32px; height: 32px;
+  margin-left: auto; border: none; background: #f0f3f6; width: 34px; height: 34px;
   border-radius: 8px; cursor: pointer; font-size: 15px; color: var(--muted);
 }
 .drawer .d-close:hover { background: #e3e8ee; color: var(--text); }
@@ -360,6 +362,24 @@ table.req-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .d-section h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin-bottom: 10px; }
 .d-pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; margin: 0; font-family: inherit; }
 .d-actions { display: flex; gap: 9px; flex-wrap: wrap; }
+.d-section .h4-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.d-section .h4-row h4 { margin-bottom: 0; }
+
+/* Email conversation thread */
+.convo { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+.convo-empty { color: var(--faint); font-size: 13.5px; padding: 6px 2px; }
+.bubble { max-width: 82%; border-radius: 12px; padding: 10px 13px; font-size: 14px; position: relative; }
+.bubble .b-meta { font-size: 11.5px; margin-bottom: 4px; opacity: .8; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.bubble .b-body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.bubble .b-kind { font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: 10px; padding: 1px 6px; border-radius: 999px; }
+.bubble.out { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
+.bubble.out .b-kind { background: rgba(255,255,255,.22); }
+.bubble.out a { color: #eafcff; }
+.bubble.in { align-self: flex-start; background: #fff; border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 3px; }
+.bubble.in .b-kind { background: var(--accent-soft); color: var(--accent-dark); }
+.compose { border-top: 1px solid var(--border); padding-top: 12px; }
+.compose textarea { min-height: 84px; margin-bottom: 8px; }
+.compose .c-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
 
 .shot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
 .shot-grid a { display: block; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }

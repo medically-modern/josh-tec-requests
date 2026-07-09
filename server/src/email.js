@@ -5,7 +5,21 @@
 // In manual mode nothing is sent automatically; the admin dashboard gets a
 // prefilled mailto: link instead, so notifications still go out with one click.
 
+const crypto = require('crypto');
+
 const EMAIL_FROM = process.env.EMAIL_FROM || 'Medically Modern Service Desk <onboarding@resend.dev>';
+
+// The bare address portion of EMAIL_FROM (what the submitter sees as "from",
+// and what their replies are addressed to).
+function senderAddress() {
+  const m = EMAIL_FROM.match(/<([^>]+)>/);
+  return (m ? m[1] : EMAIL_FROM).trim();
+}
+
+function newMessageId() {
+  const domain = (senderAddress().split('@')[1] || 'medicallymodern.com');
+  return `<${crypto.randomUUID()}@${domain}>`;
+}
 
 function emailMode() {
   if (process.env.RESEND_API_KEY) return 'resend';
@@ -13,22 +27,39 @@ function emailMode() {
   return 'manual';
 }
 
-async function sendViaResend({ to, subject, text, html }) {
+function threadHeaders({ inReplyTo, references }) {
+  const h = {};
+  if (inReplyTo) h['In-Reply-To'] = inReplyTo;
+  const refs = Array.isArray(references) ? references.filter(Boolean) : [];
+  if (refs.length) h.References = refs.join(' ');
+  return h;
+}
+
+async function sendViaResend({ to, subject, text, html, inReplyTo, references }) {
+  const messageId = newMessageId();
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, text, html }),
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: [to],
+      subject,
+      text,
+      html,
+      headers: { 'Message-ID': messageId, ...threadHeaders({ inReplyTo, references }) },
+    }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Resend API ${res.status}: ${body.slice(0, 300)}`);
   }
+  return messageId;
 }
 
-async function sendViaSmtp({ to, subject, text, html }) {
+async function sendViaSmtp({ to, subject, text, html, inReplyTo, references }) {
   const nodemailer = require('nodemailer');
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
@@ -38,14 +69,24 @@ async function sendViaSmtp({ to, subject, text, html }) {
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
       : undefined,
   });
-  await transporter.sendMail({ from: EMAIL_FROM, to, subject, text, html });
+  const info = await transporter.sendMail({
+    from: EMAIL_FROM,
+    to,
+    subject,
+    text,
+    html,
+    inReplyTo: inReplyTo || undefined,
+    references: (Array.isArray(references) ? references.filter(Boolean) : []).join(' ') || undefined,
+  });
+  return info.messageId;
 }
 
 function mailtoLink({ to, subject, text }) {
   return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
 }
 
-// Attempts delivery. Never throws; returns a result object describing what happened.
+// Attempts delivery. Never throws; returns a result object describing what
+// happened, including the RFC Message-ID so replies can be threaded to it.
 async function sendEmail(message) {
   const mode = emailMode();
   const mailto = mailtoLink(message);
@@ -53,9 +94,8 @@ async function sendEmail(message) {
     return { mode, sent: false, mailto };
   }
   try {
-    if (mode === 'resend') await sendViaResend(message);
-    else await sendViaSmtp(message);
-    return { mode, sent: true, mailto };
+    const messageId = mode === 'resend' ? await sendViaResend(message) : await sendViaSmtp(message);
+    return { mode, sent: true, messageId, mailto };
   } catch (err) {
     console.error(`Email send failed (${mode}):`, err.message);
     return { mode, sent: false, error: err.message, mailto };
@@ -191,4 +231,30 @@ function adminNewRequestEmail(req, adminEmail) {
   return { to: adminEmail, subject, text, html };
 }
 
-module.exports = { emailMode, sendEmail, receiptEmail, completionEmail, adminNewRequestEmail };
+// Admin's manual follow-up / question to the submitter, sent as a reply in the
+// same email thread as the receipt so it lands in the existing conversation.
+function followupEmail(req, bodyText) {
+  const track = trackUrl(req.ticket);
+  const subject = `Re: [${req.ticket}] ${req.title}`;
+  const text = [
+    `Hi ${req.submitter_name},`,
+    '',
+    bodyText,
+    '',
+    track ? `You can reply directly to this email, or view your ticket here: ${track}` : 'You can reply directly to this email.',
+    '',
+    '— Medically Modern Service Desk',
+  ].join('\n');
+  const html = wrapHtml(`
+    <p>Hi ${esc(req.submitter_name)},</p>
+    <div style="white-space:pre-wrap;font-size:14px;">${esc(bodyText).replace(/\n/g, '<br>')}</div>
+    <p style="color:#64748b;font-size:13px;margin-top:18px;">Regarding ticket <strong>${esc(req.ticket)}</strong> — ${esc(req.title)}.<br>
+    Just reply to this email and your response is tracked automatically.</p>
+    ${track ? `<p><a href="${esc(track)}" style="color:#0f766e;">View this ticket &rarr;</a></p>` : ''}`);
+  return { to: req.submitter_email, subject, text, html };
+}
+
+module.exports = {
+  emailMode, sendEmail, senderAddress,
+  receiptEmail, completionEmail, adminNewRequestEmail, followupEmail,
+};

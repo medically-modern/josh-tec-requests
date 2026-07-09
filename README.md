@@ -39,7 +39,11 @@ GitHub Pages (repo root) ──HTTPS──▶  Railway "handsome-simplicity" pro
 - **Completed** — everything finished, with completion date and "submitter notified?" state
 - **Analytics** — totals, avg. time-to-complete, breakdowns by service/severity/type, 30-day submission chart
 - **Services** — add, rename, hide services (the "ever-growing list")
-- Detail drawer: screenshots lightbox, video links, activity timeline, internal notes
+- **Full-page detail view**: click any ticket to open it over the whole window
+- **Two-way email conversation**: send follow-up questions to the submitter as a
+  reply in the *same* email thread (no new chains), and their replies are pulled
+  back automatically and shown inline as a chat thread (see Email below)
+- Detail view: screenshots lightbox, video links, activity timeline, internal notes
 - Mark complete → optional resolution note → submitter is emailed (see Email below)
 - CSV export of everything
 
@@ -52,6 +56,26 @@ The API supports three modes (checked in this order):
 3. **Manual (current default)** — no keys configured. Marking a request complete gives you a **one-click prefilled email** (mailto) in the dashboard, and the Completed view tracks who has been notified.
 
 Receipt emails on submission and completion emails on fix use the same mechanism.
+
+### Two-way conversations (SMTP + IMAP)
+
+With the SMTP (Gmail) path configured, the desk also does **threaded, two-way
+email**:
+
+- **Send follow-ups** from a ticket's detail view. They go out as a reply in the
+  same thread (`In-Reply-To`/`References` headers + a stable `[MM-####]` subject),
+  so in the submitter's inbox it's one conversation, not a pile of new emails.
+- **Read replies back**: the same Google **app password** that sends via SMTP also
+  grants **IMAP** read access. A background poller (every 3 min, plus an on-demand
+  sync when you open a ticket or hit "Check for replies") scans the mailbox, matches
+  each reply to its ticket by subject/`References`, confirms it's from that ticket's
+  submitter, and shows it inline in the dashboard.
+
+IMAP reuses `SMTP_USER`/`SMTP_PASS` and `imap.gmail.com:993` by default — no extra
+config. It only requires that **IMAP is enabled** in Gmail (Settings → Forwarding
+and POP/IMAP → Enable IMAP; on by default for most Workspace accounts). Override
+with `IMAP_HOST`/`IMAP_PORT`/`IMAP_USER`/`IMAP_PASS`, or turn it off with
+`IMAP_DISABLED=true`.
 
 **Admin alerts**: with `ADMIN_NOTIFY_EMAIL` set (currently `josh@medicallymodern.com`), every new submission sends an
 at-a-glance alert as soon as an email provider is configured:
@@ -70,7 +94,9 @@ directly in the admin dashboard.
 | `ALLOWED_ORIGINS` | CORS allowlist, the GitHub Pages origin |
 | `PUBLIC_BASE_URL` | Pages URL, used for links inside emails |
 | `ADMIN_NOTIFY_EMAIL` | where new-submission alerts go (josh@medicallymodern.com) |
-| `RESEND_API_KEY` / `SMTP_*` / `EMAIL_FROM` | optional, enables automatic email |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | Gmail SMTP send (currently configured) |
+| `RESEND_API_KEY` | alternative to SMTP for sending |
+| `IMAP_HOST` / `IMAP_PORT` / `IMAP_USER` / `IMAP_PASS` / `IMAP_DISABLED` | read replies (defaults to the SMTP creds + imap.gmail.com) |
 
 ## Local development
 

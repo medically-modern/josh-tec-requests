@@ -89,6 +89,23 @@ CREATE TABLE IF NOT EXISTS activity (
 );
 
 CREATE INDEX IF NOT EXISTS idx_activity_request ON activity (request_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_id UUID NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  direction TEXT NOT NULL CHECK (direction IN ('outbound', 'inbound')),
+  kind TEXT NOT NULL DEFAULT 'note',
+  from_addr TEXT NOT NULL DEFAULT '',
+  to_addr TEXT NOT NULL DEFAULT '',
+  subject TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  message_id TEXT,
+  in_reply_to TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_request ON messages (request_id, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_messages_message_id ON messages (message_id) WHERE message_id IS NOT NULL;
 `;
 
 const DEFAULT_SERVICES = [

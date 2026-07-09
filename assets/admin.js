@@ -354,15 +354,45 @@ async function openDetail(id) {
   currentDetailId = id;
   $('#overlay').classList.add('show');
   $('#drawer').classList.add('show');
+  document.body.style.overflow = 'hidden';
   $('#drawerBody').innerHTML = '<div class="loading-block"><span class="spinner dark"></span><div>Loading…</div></div>';
+  await loadDetail(id);
+  syncInBackground(id); // pull any new submitter replies, once per open
+}
+
+// Fetch + render in place (no reply-sync side effect).
+async function loadDetail(id) {
   let data;
   try {
     data = await adminApi(`/api/admin/requests/${id}`);
   } catch (err) {
-    $('#drawerBody').innerHTML = `<div class="banner banner-error">${esc(err.message)}</div>`;
+    if (currentDetailId === id) $('#drawerBody').innerHTML = `<div class="banner banner-error">${esc(err.message)}</div>`;
     return;
   }
+  if (currentDetailId !== id) return;
   renderDetail(data);
+}
+
+async function syncInBackground(id) {
+  try {
+    const r = await adminApi('/api/admin/sync', { method: 'POST' });
+    if (currentDetailId === id && r && r.ingested > 0) {
+      await loadDetail(id);
+      toast(`${r.ingested} new repl${r.ingested > 1 ? 'ies' : 'y'} pulled in`, 'ok');
+    }
+  } catch { /* transient */ }
+}
+
+const MSG_KIND_LABEL = { receipt: 'Receipt', completion: 'Completed', followup: 'Follow-up', reply: 'Reply' };
+function bubble(m) {
+  const out = m.direction === 'outbound';
+  const label = MSG_KIND_LABEL[m.kind] || m.kind;
+  const who = out ? `to ${esc(m.to_addr)}` : `from ${esc(m.from_addr)}`;
+  const body = esc(m.body || '').replace(/\n/g, '<br>') || '<i>(no text)</i>';
+  return `<div class="bubble ${out ? 'out' : 'in'}">
+    <div class="b-meta"><span class="b-kind">${esc(label)}</span> ${who} · ${esc(fmtDate(m.created_at))}</div>
+    <div class="b-body">${body}</div>
+  </div>`;
 }
 
 const ACTION_META = {
@@ -382,6 +412,8 @@ function renderDetail(data) {
 
   const links = (r.video_links || []);
   const shots = (r.screenshots || []);
+  const messages = data.messages || [];
+  const imapOk = !!(data.imap && data.imap.configured);
 
   const actions = [];
   if (r.status === 'open') {
@@ -426,6 +458,24 @@ function renderDetail(data) {
       `<div class="small" style="overflow-wrap:anywhere">&#127909; <a href="${esc(l)}" target="_blank" rel="noopener">${esc(l)}</a></div>`).join('')}</div>` : ''}
 
     <div class="d-section">
+      <div class="h4-row">
+        <h4>Email conversation with the submitter</h4>
+        <button class="btn btn-ghost btn-sm" id="syncReplies" style="margin-left:auto">&#8635; Check for replies</button>
+      </div>
+      ${imapOk ? '' : '<div class="banner banner-warn small" style="margin-bottom:12px">Reply syncing is off, so their replies won\'t appear here — but you can still send follow-ups. (Set IMAP on the API to enable.)</div>'}
+      <div class="convo">
+        ${messages.length ? messages.map(bubble).join('') : '<div class="convo-empty">No emails yet beyond the automatic receipt. Send a follow-up below to ask a question — it goes as a reply in the same email thread.</div>'}
+      </div>
+      <div class="compose">
+        <textarea id="followupBody" maxlength="8000" placeholder="Write a follow-up or ask for more detail…"></textarea>
+        <div class="c-row">
+          <span class="small muted">Sends as a reply to <strong>${esc(r.submitter_email)}</strong>; their replies show up here.</span>
+          <button class="btn btn-primary" id="followupSend">&#9993; Send follow-up</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-section">
       <h4>Internal notes & activity</h4>
       <ul class="tl">${(data.activity || []).map((a) => {
         const meta = ACTION_META[a.action] || { cls: '', label: a.action };
@@ -448,6 +498,52 @@ function renderDetail(data) {
     $('#lightboxImg').src = a.href;
     $('#lightbox').classList.add('show');
   }));
+  // Send follow-up email
+  const fSend = $('#followupSend');
+  if (fSend) {
+    fSend.addEventListener('click', async () => {
+      const body = $('#followupBody').value.trim();
+      if (body.length < 1) return toast('Write a message first', 'err');
+      fSend.disabled = true;
+      fSend.innerHTML = '<span class="spinner"></span> Sending…';
+      try {
+        const res = await adminApi(`/api/admin/requests/${r.id}/message`, { method: 'POST', body: { body } });
+        if (res.sent) {
+          toast(`Follow-up sent to ${r.submitter_email}`, 'ok');
+          await loadDetail(r.id);
+        } else if (res.mailto) {
+          toast('Auto-email unavailable — opening a prefilled email for you.', 'err');
+          window.open(res.mailto, '_blank');
+          fSend.disabled = false;
+          fSend.innerHTML = '&#9993; Send follow-up';
+        } else {
+          throw new Error(res.error || 'Could not send');
+        }
+      } catch (err) {
+        toast(err.message, 'err');
+        fSend.disabled = false;
+        fSend.innerHTML = '&#9993; Send follow-up';
+      }
+    });
+  }
+
+  // Manual "check for replies"
+  const sync = $('#syncReplies');
+  if (sync) {
+    sync.addEventListener('click', async () => {
+      sync.disabled = true;
+      sync.innerHTML = '<span class="spinner dark"></span> Checking…';
+      try {
+        const res = await adminApi('/api/admin/sync', { method: 'POST' });
+        if (res.configured === false) toast('Reply syncing is not configured on the server.', 'err');
+        else if (res.ingested > 0) { await loadDetail(r.id); toast(`${res.ingested} new repl${res.ingested > 1 ? 'ies' : 'y'} pulled in`, 'ok'); return; }
+        else toast('No new replies.', 'ok');
+      } catch (err) { toast(err.message, 'err'); }
+      sync.disabled = false;
+      sync.innerHTML = '&#8635; Check for replies';
+    });
+  }
+
   const noteAdd = $('#noteAdd');
   if (noteAdd) {
     const submitNote = async () => {
@@ -456,7 +552,7 @@ function renderDetail(data) {
       try {
         await adminApi(`/api/admin/requests/${r.id}/notes`, { method: 'POST', body: { note } });
         toast('Note added', 'ok');
-        openDetail(r.id);
+        loadDetail(r.id);
       } catch (err) { toast(err.message, 'err'); }
     };
     noteAdd.addEventListener('click', submitNote);
@@ -488,7 +584,7 @@ async function handleAction(act, r) {
       return;
     }
     await refreshAll(true);
-    if (act !== 'delete') openDetail(r.id);
+    if (act !== 'delete') loadDetail(r.id);
   } catch (err) {
     toast(err.message, 'err');
   }
@@ -536,7 +632,7 @@ $('#modalOk').addEventListener('click', async () => {
       if (res.email) handleEmailResult(res.email, r);
     }
     await refreshAll(true);
-    openDetail(r.id);
+    loadDetail(r.id);
   } catch (err) {
     toast(err.message, 'err');
   } finally {
@@ -561,6 +657,7 @@ function handleEmailResult(email, r) {
 function closeDrawer() {
   $('#overlay').classList.remove('show');
   $('#drawer').classList.remove('show');
+  document.body.style.overflow = '';
   currentDetailId = null;
 }
 $('#drawerClose').addEventListener('click', closeDrawer);

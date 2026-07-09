@@ -5,7 +5,8 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const { pool, migrate, nextTicket } = require('./db');
-const { emailMode, sendEmail, receiptEmail, completionEmail, adminNewRequestEmail } = require('./email');
+const { emailMode, sendEmail, senderAddress, receiptEmail, completionEmail, adminNewRequestEmail, followupEmail } = require('./email');
+const { imapConfigured, syncInbox } = require('./imap');
 
 const PORT = Number(process.env.PORT || 3000);
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -193,6 +194,25 @@ async function logActivity(requestId, actor, action, detail = '') {
   );
 }
 
+// In-Reply-To / References for the next email in a ticket's thread, so Gmail
+// keeps the whole exchange as one conversation.
+async function threadHeadersFor(requestId) {
+  const { rows } = await pool.query(
+    'SELECT message_id FROM messages WHERE request_id = $1 AND message_id IS NOT NULL ORDER BY created_at',
+    [requestId]
+  );
+  const ids = rows.map((r) => r.message_id);
+  return { inReplyTo: ids[ids.length - 1] || null, references: ids };
+}
+
+async function storeOutbound(requestId, kind, toAddr, subject, body, messageId, inReplyTo) {
+  await pool.query(
+    `INSERT INTO messages (request_id, direction, kind, from_addr, to_addr, subject, body, message_id, in_reply_to)
+     VALUES ($1, 'outbound', $2, $3, $4, $5, $6, $7, $8)`,
+    [requestId, kind, senderAddress(), toAddr, subject || '', body || '', messageId || null, inReplyTo || null]
+  );
+}
+
 function asyncRoute(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
@@ -302,19 +322,30 @@ app.post(
 
     const full = await getRequestFull(created.id);
 
-    // Best-effort receipt email (never blocks the submission)
+    // Best-effort receipt email (never blocks the submission). Stored as the
+    // root of the ticket's email thread so replies and follow-ups thread to it.
     let receipt = { mode: emailMode(), sent: false };
     try {
-      receipt = await sendEmail(receiptEmail(full));
-      if (receipt.sent) await logActivity(created.id, 'system', 'email_sent', 'Receipt email sent to submitter');
+      const rMsg = receiptEmail(full);
+      receipt = await sendEmail(rMsg);
+      if (receipt.sent) {
+        await logActivity(created.id, 'system', 'email_sent', 'Receipt email sent to submitter');
+        await storeOutbound(created.id, 'receipt', full.submitter_email, rMsg.subject, rMsg.text, receipt.messageId, null);
+      }
     } catch { /* already logged inside sendEmail */ }
 
     // Best-effort new-request alert to the admin
     const adminEmail = (process.env.ADMIN_NOTIFY_EMAIL || '').trim();
     if (adminEmail) {
       try {
-        const alert = await sendEmail(adminNewRequestEmail(full, adminEmail));
-        if (alert.sent) await logActivity(created.id, 'system', 'email_sent', `New-request alert sent to ${adminEmail}`);
+        const aMsg = adminNewRequestEmail(full, adminEmail);
+        const alert = await sendEmail(aMsg);
+        if (alert.sent) {
+          await logActivity(created.id, 'system', 'email_sent', `New-request alert sent to ${adminEmail}`);
+          // Recorded (not shown in the submitter conversation) so the IMAP
+          // reader can tell our own alert apart from a genuine reply.
+          await storeOutbound(created.id, 'admin_alert', adminEmail, aMsg.subject, '', alert.messageId, null);
+        }
       } catch { /* already logged inside sendEmail */ }
     }
 
@@ -401,7 +432,45 @@ admin.get('/requests/:id', asyncRoute(async (req, res) => {
     'SELECT actor, action, detail, created_at FROM activity WHERE request_id = $1 ORDER BY created_at',
     [full.id]
   );
-  res.json({ request: full, activity: acts });
+  const { rows: msgs } = await pool.query(
+    `SELECT direction, kind, from_addr, to_addr, subject, body, created_at
+     FROM messages WHERE request_id = $1 AND kind <> 'admin_alert' ORDER BY created_at`,
+    [full.id]
+  );
+  res.json({
+    request: full,
+    activity: acts,
+    messages: msgs,
+    email_mode: emailMode(),
+    imap: { configured: imapConfigured() },
+  });
+}));
+
+// Send a follow-up / question to the submitter as a reply in the ticket thread.
+admin.post('/requests/:id/message', asyncRoute(async (req, res) => {
+  const id = clean(req.params.id, 60);
+  const full = await getRequestFull(id);
+  if (!full) return res.status(404).json({ error: 'Not found' });
+  const bodyText = clean((req.body || {}).body, 8000);
+  if (bodyText.length < 1) return res.status(400).json({ error: 'Message text is required' });
+
+  const msg = followupEmail(full, bodyText);
+  const th = await threadHeadersFor(id);
+  const result = await sendEmail({ ...msg, inReplyTo: th.inReplyTo, references: th.references });
+
+  if (!result.sent) {
+    return res.status(200).json({ sent: false, mode: result.mode, error: result.error, mailto: result.mailto });
+  }
+  await storeOutbound(id, 'followup', full.submitter_email, msg.subject, bodyText, result.messageId, th.inReplyTo);
+  await logActivity(id, 'admin', 'followup', `Follow-up email sent to ${full.submitter_email}`);
+  await pool.query('UPDATE requests SET updated_at = now() WHERE id = $1', [id]);
+  res.status(201).json({ sent: true, mode: result.mode });
+}));
+
+// Pull new submitter replies from the mailbox (also runs on a timer).
+admin.post('/sync', asyncRoute(async (req, res) => {
+  const result = await syncInbox(pool);
+  res.json(result);
 }));
 
 admin.patch('/requests/:id', asyncRoute(async (req, res) => {
@@ -447,7 +516,12 @@ admin.patch('/requests/:id', asyncRoute(async (req, res) => {
   // Completion email
   if (newStatus === 'completed' && existing.status !== 'completed' && b.skip_email !== true) {
     const fresh = await getRequestFull(id);
-    emailResult = await sendEmail(completionEmail(fresh));
+    const cMsg = completionEmail(fresh);
+    const th = await threadHeadersFor(id);
+    emailResult = await sendEmail({ ...cMsg, inReplyTo: th.inReplyTo, references: th.references });
+    if (emailResult.sent) {
+      await storeOutbound(id, 'completion', fresh.submitter_email, cMsg.subject, cMsg.text, emailResult.messageId, th.inReplyTo);
+    }
     const notifyStatus = emailResult.sent ? 'sent' : emailResult.mode === 'manual' ? 'manual' : 'failed';
     await pool.query(
       'UPDATE requests SET notify_status = $1, notified_at = CASE WHEN $1 = $2 THEN now() ELSE notified_at END WHERE id = $3',
@@ -638,8 +712,14 @@ app.use((err, req, res, next) => {
 migrate()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`MM Service Desk API listening on :${PORT} (email mode: ${emailMode()})`);
+      console.log(`MM Service Desk API listening on :${PORT} (email mode: ${emailMode()}, imap: ${imapConfigured()})`);
     });
+    // Poll the mailbox for submitter replies on a timer (in addition to the
+    // on-demand sync when the admin opens a ticket).
+    if (imapConfigured()) {
+      setTimeout(() => syncInbox(pool).catch(() => {}), 15000).unref();
+      setInterval(() => syncInbox(pool).catch(() => {}), 180000).unref();
+    }
   })
   .catch((err) => {
     console.error('FATAL: could not initialize database:', err);
