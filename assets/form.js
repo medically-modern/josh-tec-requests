@@ -29,6 +29,16 @@ async function loadServices() {
     banner.classList.remove('hidden');
   }
 }
+function isCommandCenter() {
+  const sel = $('#service');
+  const label = sel.options[sel.selectedIndex]?.text || '';
+  return sel.value !== '' && /command\s*center/i.test(label);
+}
+$('#service').addEventListener('change', () => {
+  $('#f-role').classList.toggle('hidden', !isCommandCenter());
+  $('#f-role').classList.remove('invalid');
+});
+
 $('#apiRetry').addEventListener('click', loadServices);
 loadServices();
 
@@ -179,6 +189,7 @@ function validate() {
   if (setInvalid('#f-service', !$('#service').value)) problems.push('choose a service');
   if (setInvalid('#f-type', !selectedType)) problems.push('choose a request type');
   if (setInvalid('#f-severity', !selectedSev)) problems.push('choose a severity');
+  if (setInvalid('#f-role', isCommandCenter() && $('#role').value.trim().length < 2)) problems.push('specify which Command Center role this is about');
   if (setInvalid('#f-title', $('#title').value.trim().length < 4)) problems.push('add a short summary');
   if (setInvalid('#f-description', $('#description').value.trim().length < 10)) problems.push('describe the request');
   if (setInvalid('#f-name', $('#name').value.trim().length < 2)) problems.push('enter your name');
@@ -223,7 +234,8 @@ $('#requestForm').addEventListener('submit', (e) => {
   fd.append('service_id', $('#service').value);
   fd.append('type', selectedType);
   fd.append('severity', selectedSev);
-  fd.append('title', $('#title').value.trim());
+  const rolePrefix = isCommandCenter() ? `[${$('#role').value.trim()}] ` : '';
+  fd.append('title', (rolePrefix + $('#title').value.trim()).slice(0, 200));
   fd.append('description', $('#description').value.trim());
   fd.append('steps', selectedType === 'issue' ? $('#steps').value.trim() : '');
   fd.append('video_links', JSON.stringify(links));
