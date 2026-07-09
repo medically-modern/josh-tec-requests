@@ -88,8 +88,5 @@ function screenshotUrl(s) {
   return API_BASE + (s.url || `/api/screenshots/${s.id}`);
 }
 
-// Medically Modern double-M monogram
-const LOGO_SVG = `<svg width="30" height="30" viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg" aria-label="Medically Modern">
-  <path fill="#b9d6d1" d="M0,105 L0,0 L19,0 L52.5,44 L86,0 L105,0 L105,105 L86,105 L86,31 L52.5,75 L19,31 L19,105 Z"/>
-  <path fill="#6fa5a0" d="M35,140 L35,35 L54,35 L87.5,79 L121,35 L140,35 L140,140 L121,140 L121,66 L87.5,110 L54,66 L54,140 Z"/>
-</svg>`;
+// Medically Modern logo (official asset; swap src to assets/logo.gif for the animated version)
+const LOGO_SVG = '<img src="assets/logo.png" alt="Medically Modern" width="36" height="36" style="display:block">';
