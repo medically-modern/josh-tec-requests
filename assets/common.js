@@ -88,5 +88,5 @@ function screenshotUrl(s) {
   return API_BASE + (s.url || `/api/screenshots/${s.id}`);
 }
 
-// Medically Modern logo (official asset; swap src to assets/logo.gif for the animated version)
-const LOGO_SVG = '<img src="assets/logo.png" alt="Medically Modern" width="36" height="36" style="display:block">';
+// Medically Modern animated logo (assets/logo.gif); assets/logo.png is the static fallback/favicon
+const LOGO_SVG = '<img src="assets/logo.gif" alt="Medically Modern" width="38" height="38" style="display:block" onerror="this.src=\'assets/logo.png\'">';
