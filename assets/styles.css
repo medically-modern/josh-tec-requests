@@ -506,3 +506,26 @@ table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; f
 .sheet-table .col-days { text-align: center; font-weight: 700; white-space: nowrap; }
 .sheet-table tr.sev-critical .col-days { color: var(--red); }
 .sheet-table tr.sev-high .col-days { color: var(--orange); }
+
+/* Review sheet — expandable ticket detail */
+.sheet-row { cursor: pointer; }
+.sheet-row .caret { display: inline-block; margin-right: 6px; color: var(--faint); transition: transform .15s; }
+.sheet-row.expanded .caret { transform: rotate(90deg); color: var(--accent); }
+.sheet-row.expanded td { background: #eef6f9; }
+.row-meta { margin-top: 4px; font-size: 11.5px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.sheet-detail > td { background: #fbfdfe; padding: 14px 16px; border-bottom: 2px solid var(--border-strong); }
+.dd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+@media (max-width: 980px) { .dd-grid { grid-template-columns: 1fr; } }
+.dd-section { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+.dd-section:last-child { margin-bottom: 0; }
+.dd-section h4 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin: 0 0 9px; }
+.dd-pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13.5px; color: var(--text); }
+.dd-links { margin: 0; padding-left: 18px; font-size: 13.5px; }
+.dd-links a { color: var(--accent); word-break: break-all; }
+.dd-msgs { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; }
+.dd-msg { border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; background: #f8fafc; }
+.dd-msg.out { background: var(--accent-soft); border-color: #bae6fd; }
+.dd-msg.in { background: #fefce8; border-color: #fde68a; }
+.dd-msg-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 5px; font-size: 12.5px; }
+.dd-msg-kind { color: var(--muted); background: rgba(255,255,255,.7); border-radius: 999px; padding: 0 8px; font-size: 11px; font-weight: 600; }
+.dd-msg-date { margin-left: auto; color: var(--faint); font-size: 11.5px; white-space: nowrap; }

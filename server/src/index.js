@@ -380,9 +380,15 @@ app.get('/api/review', rateLimit('review', 60, 60000), asyncRoute(async (req, re
   }
   const { rows } = await pool.query(
     `SELECT r.ticket, r.type, r.severity, r.status, r.title, r.description,
-            r.submitter_name, r.created_at, r.updated_at, s.name AS service_name
+            r.submitter_name, r.created_at, r.updated_at, s.name AS service_name,
+            COALESCE(jsonb_array_length(r.video_links), 0)::int AS video_count,
+            (r.steps <> '') AS has_steps,
+            COALESCE(sc.n, 0)::int AS screenshot_count,
+            COALESCE(mc.n, 0)::int AS message_count
      FROM requests r
      JOIN services s ON s.id = r.service_id
+     LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM screenshots GROUP BY request_id) sc ON sc.request_id = r.id
+     LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM messages WHERE kind <> 'admin_alert' GROUP BY request_id) mc ON mc.request_id = r.id
      WHERE r.status IN ('open', 'in_progress')
      ORDER BY (r.type = 'change_request') DESC,
               CASE r.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
@@ -390,6 +396,32 @@ app.get('/api/review', rateLimit('review', 60, 60000), asyncRoute(async (req, re
   );
   res.set('Cache-Control', 'no-store');
   res.json({ requests: rows, generated_at: new Date().toISOString() });
+}));
+
+// Full detail for one ticket on the review sheet: steps, video links,
+// screenshots, the email conversation, and the activity timeline. Internal
+// admin notes and raw email addresses are never included.
+app.get('/api/review/:ticket', rateLimit('review_detail', 120, 60000), asyncRoute(async (req, res) => {
+  if (REVIEW_KEY && !timingSafeEq(clean(req.query.key, 200), REVIEW_KEY)) {
+    return res.status(401).json({ error: 'This review link is missing or has the wrong access key.' });
+  }
+  const full = await getRequestFull(clean(req.params.ticket, 24).toUpperCase(), true);
+  if (!full) return res.status(404).json({ error: 'Ticket not found.' });
+  delete full.submitter_email;
+  const { rows: acts } = await pool.query(
+    `SELECT actor, action, detail, created_at FROM activity
+     WHERE request_id = $1
+       AND action IN ('created','status_changed','email_sent','email_pending','followup','reply','resolution_note')
+     ORDER BY created_at`,
+    [full.id]
+  );
+  const { rows: msgs } = await pool.query(
+    `SELECT direction, kind, subject, body, created_at
+     FROM messages WHERE request_id = $1 AND kind <> 'admin_alert' ORDER BY created_at`,
+    [full.id]
+  );
+  res.set('Cache-Control', 'no-store');
+  res.json({ request: full, activity: acts, messages: msgs });
 }));
 
 // Ticket tracking for submitters (requires matching ticket + email)
