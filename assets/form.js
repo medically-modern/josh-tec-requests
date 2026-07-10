@@ -23,6 +23,7 @@ async function loadServices() {
       data.services.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
     servicesLoaded = true;
     banner.classList.add('hidden');
+    applyPrefill();
   } catch (err) {
     sel.innerHTML = '<option value="">Couldn\'t load services</option>';
     $('#apiBannerDetail').textContent = err.message;
@@ -39,6 +40,33 @@ $('#service').addEventListener('change', () => {
   $('#f-role').classList.remove('invalid');
 });
 $('#role').addEventListener('change', () => $('#f-role').classList.remove('invalid'));
+
+// Deep-link prefill — the Command Center's report button links here with
+// ?service=command-center&role=<role label> so the service and role arrive
+// pre-selected. Matching is fuzzy on the service (label OR id, punctuation
+// and case ignored) and exact-but-case-insensitive on the role label.
+function applyPrefill() {
+  const params = new URLSearchParams(window.location.search);
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  const svcParam = norm(params.get('service') || '');
+  if (svcParam) {
+    const sel = $('#service');
+    const opt = Array.from(sel.options).find((o) =>
+      o.value && (norm(o.text).includes(svcParam) || norm(o.value) === svcParam));
+    if (opt && !sel.value) {
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('change'));
+    }
+  }
+
+  const roleParam = norm(params.get('role') || '');
+  if (roleParam) {
+    const roleSel = $('#role');
+    const opt = Array.from(roleSel.options).find((o) => o.value && norm(o.value) === roleParam);
+    if (opt && !roleSel.value) roleSel.value = opt.value;
+  }
+}
 
 $('#apiRetry').addEventListener('click', loadServices);
 loadServices();
