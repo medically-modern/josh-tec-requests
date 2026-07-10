@@ -38,6 +38,7 @@ $('#service').addEventListener('change', () => {
   $('#f-role').classList.toggle('hidden', !isCommandCenter());
   $('#f-role').classList.remove('invalid');
 });
+$('#role').addEventListener('change', () => $('#f-role').classList.remove('invalid'));
 
 $('#apiRetry').addEventListener('click', loadServices);
 loadServices();
@@ -189,7 +190,7 @@ function validate() {
   if (setInvalid('#f-service', !$('#service').value)) problems.push('choose a service');
   if (setInvalid('#f-type', !selectedType)) problems.push('choose a request type');
   if (setInvalid('#f-severity', !selectedSev)) problems.push('choose a severity');
-  if (setInvalid('#f-role', isCommandCenter() && $('#role').value.trim().length < 2)) problems.push('specify which Command Center role this is about');
+  if (setInvalid('#f-role', isCommandCenter() && !$('#role').value)) problems.push('select which Command Center role this is about');
   if (setInvalid('#f-title', $('#title').value.trim().length < 4)) problems.push('add a short summary');
   if (setInvalid('#f-description', $('#description').value.trim().length < 10)) problems.push('describe the request');
   if (setInvalid('#f-name', $('#name').value.trim().length < 2)) problems.push('enter your name');
