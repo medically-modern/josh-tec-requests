@@ -2,12 +2,13 @@
 
 An internal system for employees to **report issues** and **request changes** to Medically Modern services, with a personal admin dashboard for triaging, completing, and notifying.
 
-## The three pages (GitHub Pages)
+## The four pages (GitHub Pages)
 
 | Page | Who | What |
 |---|---|---|
 | `index.html` | Employees | Submit an issue report or change request — service picker, severity, screenshots (drag & drop / paste), Loom links. Shows a ticket number and **server-verified attachment previews** on success. |
 | `status.html` | Employees | Track any ticket by ticket number + email. |
+| `review.html` | Company | Read-only **spreadsheet-style sheet of every unresolved request** (open + in progress), refreshed live on each load — change requests grouped on top, reported issues below. Share the link; no login. Optionally require `?key=…` by setting `REVIEW_KEY` on Railway. Submitter emails are never shown. |
 | `admin.html` | Josh | Personal dashboard — Inbox, Board, Completed, Analytics, and Services views. Open it with your personal key link. |
 
 ## Architecture
@@ -94,6 +95,7 @@ directly in the admin dashboard.
 | `ALLOWED_ORIGINS` | CORS allowlist, the GitHub Pages origin |
 | `PUBLIC_BASE_URL` | Pages URL, used for links inside emails |
 | `ADMIN_NOTIFY_EMAIL` | where new-submission alerts go (josh@medicallymodern.com) |
+| `REVIEW_KEY` | optional — when set, the company review sheet requires `review.html?key=<REVIEW_KEY>`; when unset, the review link is open |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | Gmail SMTP send (currently configured) |
 | `RESEND_API_KEY` | alternative to SMTP for sending |
 | `IMAP_HOST` / `IMAP_PORT` / `IMAP_USER` / `IMAP_PASS` / `IMAP_DISABLED` | read replies (defaults to the SMTP creds + imap.gmail.com) |
