@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unresolved Requests — Medically Modern Service Desk</title>
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <div class="logo-mark" id="logoMark"></div>
+    <div>
+      <h1>Unresolved Requests</h1>
+      <p class="sub">Medically Modern &middot; company review sheet &middot; live on every load</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn-sm on-dark" href="index.html">New request</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap wide sheet-wrap">
+  <div class="sheet-toolbar">
+    <div class="sheet-counts" id="counts"></div>
+    <div class="sheet-updated">
+      <span id="updatedAt"></span>
+      <button class="btn btn-sm" id="refreshBtn" type="button">&#8635; Refresh</button>
+    </div>
+  </div>
+
+  <div id="loadState" class="card center muted"><span class="spinner dark"></span> Loading unresolved requests&hellip;</div>
+  <div id="loadError" class="banner banner-error hidden"><span>&#9888;</span><div id="loadErrorText"></div></div>
+
+  <div class="sheet hidden" id="sheet">
+    <div class="sheet-scroll">
+      <table class="sheet-table">
+        <thead>
+          <tr>
+            <th class="col-ticket">Ticket</th>
+            <th class="col-title">Request</th>
+            <th class="col-desc">Description</th>
+            <th class="col-sev">Priority</th>
+            <th class="col-status">Status</th>
+            <th class="col-svc">Service / Tool Affected</th>
+            <th class="col-by">Reported By</th>
+            <th class="col-date">Date Reported</th>
+            <th class="col-days">Days Open</th>
+          </tr>
+        </thead>
+        <tbody id="sheetBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="site-foot">
+    Medically Modern &middot; Service Request Center<br>
+    This sheet reloads live data every time it is opened. Questions? Email <a href="mailto:josh@medicallymodern.com">josh@medicallymodern.com</a>
+  </footer>
+</main>
+
+<script src="config.js"></script>
+<script src="assets/common.js"></script>
+<script src="assets/review.js"></script>
+</body>
+</html>

@@ -370,6 +370,28 @@ app.get('/api/screenshots/:id', asyncRoute(async (req, res) => {
   res.send(s.data);
 }));
 
+// Company review sheet — every unresolved request (open + in progress), fresh
+// on each load. Shareable read-only link; set REVIEW_KEY on Railway to require
+// ?key=… in the link, leave it unset for an open link.
+const REVIEW_KEY = (process.env.REVIEW_KEY || '').trim();
+app.get('/api/review', rateLimit('review', 60, 60000), asyncRoute(async (req, res) => {
+  if (REVIEW_KEY && !timingSafeEq(clean(req.query.key, 200), REVIEW_KEY)) {
+    return res.status(401).json({ error: 'This review link is missing or has the wrong access key.' });
+  }
+  const { rows } = await pool.query(
+    `SELECT r.ticket, r.type, r.severity, r.status, r.title, r.description,
+            r.submitter_name, r.created_at, r.updated_at, s.name AS service_name
+     FROM requests r
+     JOIN services s ON s.id = r.service_id
+     WHERE r.status IN ('open', 'in_progress')
+     ORDER BY (r.type = 'change_request') DESC,
+              CASE r.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+              r.created_at`
+  );
+  res.set('Cache-Control', 'no-store');
+  res.json({ requests: rows, generated_at: new Date().toISOString() });
+}));
+
 // Ticket tracking for submitters (requires matching ticket + email)
 app.get('/api/track', rateLimit('track', 20, 60000), asyncRoute(async (req, res) => {
   const ticket = clean(req.query.ticket, 24).toUpperCase();

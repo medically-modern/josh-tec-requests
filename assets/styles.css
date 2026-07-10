@@ -457,3 +457,52 @@ table.req-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .nowrap { white-space: nowrap; }
 footer.site-foot { text-align: center; color: var(--faint); font-size: 12.5px; padding: 30px 0 10px; }
 footer.site-foot a { color: var(--muted); }
+
+/* ---------------------------------------------------------------------------
+   Company review sheet (review.html) — spreadsheet-style grid */
+.wrap.sheet-wrap { max-width: 1680px; }
+.sheet-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 20px 0 12px; }
+.sheet-counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: #f1f5f9; color: var(--slate); border: 1px solid #e2e8f0;
+}
+.chip-change { background: #eef2ff; color: var(--indigo); border-color: #c7d2fe; }
+.chip-issue { background: #fff1f2; color: #be123c; border-color: #fecdd3; }
+.sheet-updated { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
+
+.sheet { background: var(--card); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
+.sheet-scroll { overflow-x: auto; max-height: calc(100vh - 210px); overflow-y: auto; }
+table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; min-width: 1080px; }
+.sheet-table th, .sheet-table td { border-right: 1px solid #dde4ea; border-bottom: 1px solid #dde4ea; padding: 8px 10px; text-align: left; vertical-align: top; }
+.sheet-table th:last-child, .sheet-table td:last-child { border-right: none; }
+.sheet-table thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--text); color: #fff; font-size: 11.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+  border-right-color: rgba(255, 255, 255, .16); border-bottom: none;
+}
+.sheet-table tbody tr.band td { background: #f7fafc; }
+.sheet-table tbody tr:hover td { background: #eef6f9; }
+
+.sheet-section td { font-weight: 800; font-size: 13px; letter-spacing: .02em; padding: 9px 10px; }
+.sheet-section .sec-count {
+  display: inline-block; min-width: 22px; text-align: center; margin-left: 6px;
+  padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, .75); font-size: 12px;
+}
+.sheet-section.sec-change td { background: #eef2ff; color: #3730a3; border-bottom-color: #c7d2fe; }
+.sheet-section.sec-issue td { background: #fff1f2; color: #9f1239; border-bottom-color: #fecdd3; }
+.sheet-section.sec-issue td { border-top: 2px solid #fecdd3; }
+.sheet-empty td { color: var(--faint); font-style: italic; padding: 14px 12px; }
+
+.sheet-table td.col-ticket { white-space: nowrap; font-weight: 700; color: var(--accent-dark); }
+.sheet-table td.col-title { font-weight: 600; min-width: 160px; }
+.sheet-table td.col-desc { color: #33424f; white-space: pre-line; }
+.sheet-table .col-desc { min-width: 280px; max-width: 460px; }
+.sheet-table .col-sev, .sheet-table .col-status { white-space: nowrap; }
+.sheet-table .col-svc { min-width: 130px; }
+.sheet-table .col-by, .sheet-table .col-date { white-space: nowrap; }
+.sheet-table .col-days { text-align: center; font-weight: 700; white-space: nowrap; }
+.sheet-table tr.sev-critical .col-days { color: var(--red); }
+.sheet-table tr.sev-high .col-days { color: var(--orange); }
