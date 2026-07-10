@@ -103,13 +103,26 @@
           <div class="small"><strong>Command Center requests must specify a role.</strong> Tell us which role this is about so it reaches the right place.</div>
         </div>
         <label for="role">Which role is this about?</label>
-        <input type="text" id="role" maxlength="60" list="roleOptions" placeholder="e.g. Evaluate, Benefits, Welcome Call…">
-        <datalist id="roleOptions">
-          <option value="Evaluate"></option>
-          <option value="Benefits"></option>
-          <option value="Welcome Call"></option>
-        </datalist>
-        <div class="err-msg">Please specify which role this request is about (Evaluate, Benefits, Welcome Call, …).</div>
+        <select id="role">
+          <option value="">— Select a role —</option>
+          <option value="Profile Checklist">Profile Checklist</option>
+          <option value="Evaluate">Evaluate</option>
+          <option value="Send Request">Send Request</option>
+          <option value="Confirm Receipt">Confirm Receipt</option>
+          <option value="Chase Clinicals — Fax">Chase Clinicals — Fax</option>
+          <option value="Chase Clinicals — Email &amp; Parachute">Chase Clinicals — Email &amp; Parachute</option>
+          <option value="Benefits">Benefits</option>
+          <option value="Submit Auth">Submit Auth</option>
+          <option value="Auth Outstanding">Auth Outstanding</option>
+          <option value="Welcome Call">Welcome Call</option>
+          <option value="Final Profile Confirmation">Final Profile Confirmation</option>
+          <option value="Subscription">Subscription</option>
+          <option value="Update Clinicals">Update Clinicals</option>
+          <option value="Auth Denied">Auth Denied</option>
+          <option value="Patient Questions">Patient Questions</option>
+          <option value="FAX">FAX</option>
+        </select>
+        <div class="err-msg">Please select which role this request is about.</div>
       </div>
       <div class="field" id="f-title">
         <label for="title">Short summary <span class="char-count" id="titleCount">0 / 200</span></label>
