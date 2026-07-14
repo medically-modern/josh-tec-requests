@@ -106,6 +106,16 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_request ON messages (request_id, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_messages_message_id ON messages (message_id) WHERE message_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS folders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES folders(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_requests_folder ON requests (folder_id);
 `;
 
 // [name, description, sort_order]

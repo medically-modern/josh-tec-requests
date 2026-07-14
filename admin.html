@@ -70,6 +70,7 @@
 
     <!-- Inbox -->
     <section id="view-inbox">
+      <div class="folder-bar hidden" id="folderBar"></div>
       <div class="filter-bar">
         <input type="search" id="fSearch" placeholder="Search tickets, titles, names…">
         <select id="fService"><option value="">All services</option></select>
@@ -96,7 +97,7 @@
         <div class="table-scroll">
           <table class="req-table">
             <thead><tr>
-              <th>Ticket</th><th>Severity</th><th>Type</th><th>Title</th><th>Service</th><th>From</th><th>&#128206;</th><th>Age</th><th>Status</th>
+              <th>Ticket</th><th>Severity</th><th>Type</th><th>Title</th><th>Service</th><th>From</th><th>&#128206;</th><th>Age</th><th>Status</th><th>Notes</th>
             </tr></thead>
             <tbody id="inboxRows"></tbody>
           </table>

@@ -437,6 +437,70 @@ table.req-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .mini-chart .mc-bar { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; }
 .mini-chart .mc-bar:hover { background: var(--accent-dark); }
 
+/* Inbox folders */
+.folder-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.fchip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 13px; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: #fff; color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: border-color .15s, background .15s;
+}
+.fchip:hover { border-color: var(--accent); }
+.fchip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fchip .fcount { background: rgba(0, 0, 0, .08); border-radius: 999px; padding: 0 7px; font-size: 11.5px; }
+.fchip.active .fcount { background: rgba(255, 255, 255, .25); }
+.fchip-new { border-style: dashed; background: transparent; color: var(--muted); }
+.fchip-new:hover { color: var(--accent-dark); }
+.fmanage { display: inline-flex; gap: 6px; margin-left: 4px; }
+
+/* Inbox notes column */
+.t-notes { white-space: nowrap; text-align: right; }
+.cell-btn {
+  border: 1px solid var(--border-strong); background: #fff; color: var(--muted);
+  width: 26px; height: 26px; border-radius: 7px; cursor: pointer;
+  font-size: 13px; line-height: 1; vertical-align: middle;
+}
+.cell-btn:hover { border-color: var(--accent); color: var(--accent-dark); background: var(--accent-soft); }
+.note-ind {
+  border: 1px solid #c7d2fe; background: #eef2ff; color: var(--indigo);
+  border-radius: 999px; padding: 3.5px 9px; font: inherit; font-size: 12px; font-weight: 700;
+  cursor: default; vertical-align: middle;
+}
+
+/* Enlarged note preview on hover */
+.note-hover {
+  position: fixed; z-index: 950;
+  width: min(460px, calc(100vw - 24px)); max-height: 60vh; overflow-y: auto;
+  background: #fff; border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: var(--shadow-lg); padding: 14px 16px;
+}
+.note-hover .nh-head { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); font-weight: 700; margin-bottom: 9px; }
+.note-hover .nh-item { border-left: 3px solid #c7d2fe; background: #f6f7ff; border-radius: 0 8px 8px 0; padding: 9px 12px; margin-bottom: 8px; }
+.note-hover .nh-item:last-child { margin-bottom: 0; }
+.note-hover .nh-body { font-size: 15.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.note-hover .nh-meta { font-size: 12px; color: var(--faint); margin-top: 4px; }
+
+/* Row popovers: quick note + move-to-folder */
+.float-panel {
+  position: fixed; z-index: 960;
+  width: min(340px, calc(100vw - 24px));
+  background: #fff; border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: var(--shadow-lg); padding: 12px 14px;
+}
+.float-panel .fp-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.float-panel textarea { min-height: 84px; font-size: 13.5px; }
+.float-panel .fp-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.fm-item {
+  display: block; width: 100%; text-align: left;
+  border: none; background: none; font: inherit; font-size: 13.5px;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+}
+.fm-item:hover { background: #f0f3f6; }
+.fm-item.current { background: var(--accent-soft); color: var(--accent-dark); font-weight: 700; }
+.fm-item.fm-new { color: var(--accent); margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; }
+.folder-sel { width: auto; padding: 5px 9px; font-size: 13px; margin-left: 4px; }
+
 /* Key screen */
 .key-screen { max-width: 420px; margin: 60px auto; }
 

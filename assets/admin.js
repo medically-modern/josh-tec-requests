@@ -8,6 +8,9 @@ const KEY_STORE = 'mm_admin_key';
 let adminKey = '';
 let allRequests = [];
 let allServices = [];
+let allFolders = [];
+let foldersSupported = false; // false until the API has the folders endpoints
+let currentFolder = 'unfiled'; // 'unfiled' | 'all' | a folder id
 let currentView = 'inbox';
 let currentDetailId = null;
 let emailMode = 'manual';
@@ -73,17 +76,22 @@ async function boot() {
 }
 
 async function refreshAll(silent) {
-  const [reqData, svcData, health] = await Promise.all([
+  const [reqData, svcData, health, fldData] = await Promise.all([
     adminApi('/api/admin/requests'),
     adminApi('/api/admin/services'),
     api('/api/health').catch(() => ({ email_mode: 'manual' })),
+    // Folders arrive with a newer API — degrade gracefully until it's redeployed.
+    adminApi('/api/admin/folders').catch(() => null),
   ]);
   allRequests = reqData.requests || [];
   allServices = svcData.services || [];
+  foldersSupported = !!(fldData && Array.isArray(fldData.folders));
+  allFolders = foldersSupported ? fldData.folders : [];
   emailMode = health.email_mode || 'manual';
   $('#emailModeBanner').classList.toggle('hidden', emailMode !== 'manual');
   renderCounts();
   renderServiceFilter();
+  renderFolderBar();
   renderView();
   const open = allRequests.filter((r) => r.status === 'open').length;
   const prog = allRequests.filter((r) => r.status === 'in_progress').length;
@@ -135,6 +143,194 @@ function renderView() {
 }
 
 // ---------------------------------------------------------------------------
+// Inbox folders — file tickets away from the main view, pull them back by chip
+function renderFolderBar() {
+  const bar = $('#folderBar');
+  if (!foldersSupported) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  bar.classList.remove('hidden');
+  if (currentFolder !== 'unfiled' && currentFolder !== 'all' && !allFolders.some((f) => f.id === currentFolder)) {
+    currentFolder = 'unfiled'; // folder was deleted elsewhere
+  }
+  const isActive = (r) => r.status === 'open' || r.status === 'in_progress';
+  const unfiled = allRequests.filter((r) => !r.folder_id && isActive(r)).length;
+  const chip = (key, label, count) =>
+    `<button type="button" class="fchip ${currentFolder === key ? 'active' : ''}" data-folder="${esc(key)}">
+       ${label}${count === null ? '' : ` <span class="fcount">${count}</span>`}
+     </button>`;
+  const cur = allFolders.find((f) => f.id === currentFolder);
+  bar.innerHTML =
+    chip('unfiled', '&#128229; Inbox', unfiled) +
+    allFolders.map((f) => chip(f.id, `&#128193; ${esc(f.name)}`, f.active_count)).join('') +
+    chip('all', 'Everything', null) +
+    '<button type="button" class="fchip fchip-new" id="folderNew" title="Create a folder to organize tickets">&#65291; New folder</button>' +
+    (cur ? `<span class="fmanage">
+       <button type="button" class="btn btn-ghost btn-sm" id="folderRename">Rename</button>
+       <button type="button" class="btn btn-ghost btn-sm" id="folderDelete">Delete folder</button>
+     </span>` : '');
+
+  $$('#folderBar .fchip[data-folder]').forEach((b) => b.addEventListener('click', () => {
+    currentFolder = b.dataset.folder;
+    renderFolderBar();
+    renderInbox();
+  }));
+  $('#folderNew').addEventListener('click', async () => {
+    const name = (prompt('New folder name:') || '').trim();
+    if (!name) return;
+    try {
+      const res = await adminApi('/api/admin/folders', { method: 'POST', body: { name } });
+      currentFolder = res.folder.id;
+      toast(`Folder “${res.folder.name}” created`, 'ok');
+      await refreshAll(true);
+    } catch (err) { toast(err.message, 'err'); }
+  });
+  if (cur) {
+    $('#folderRename').addEventListener('click', async () => {
+      const name = (prompt('Folder name:', cur.name) || '').trim();
+      if (!name || name === cur.name) return;
+      try {
+        await adminApi(`/api/admin/folders/${cur.id}`, { method: 'PATCH', body: { name } });
+        toast('Folder renamed', 'ok');
+        await refreshAll(true);
+      } catch (err) { toast(err.message, 'err'); }
+    });
+    $('#folderDelete').addEventListener('click', async () => {
+      if (!confirm(`Delete the folder “${cur.name}”? Its tickets go back to the Inbox — nothing is lost.`)) return;
+      try {
+        await adminApi(`/api/admin/folders/${cur.id}`, { method: 'DELETE' });
+        currentFolder = 'unfiled';
+        toast('Folder deleted — its tickets are back in the Inbox', 'ok');
+        await refreshAll(true);
+      } catch (err) { toast(err.message, 'err'); }
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Floating panels: enlarged note preview on hover + row popovers (quick note,
+// move-to-folder). Appended to <body> so table scroll containers never clip them.
+let hoverEl = null;
+let hoverHideTimer = null;
+let floatEl = null;
+
+function placeNear(el, anchor) {
+  const a = anchor.getBoundingClientRect();
+  const left = Math.max(12, Math.min(a.right - el.offsetWidth, window.innerWidth - el.offsetWidth - 12));
+  // Open on whichever side of the anchor has more room, and cap the panel's
+  // height to that room so a long note list never covers the anchor itself.
+  const below = window.innerHeight - a.bottom - 18;
+  const above = a.top - 18;
+  const side = el.offsetHeight <= below || below >= above ? 'below' : 'above';
+  el.style.maxHeight = `${Math.max(120, side === 'below' ? below : above)}px`;
+  const h = el.offsetHeight; // re-measure after the height cap applies
+  el.style.left = `${left}px`;
+  el.style.top = `${side === 'below' ? a.bottom + 6 : Math.max(12, a.top - h - 6)}px`;
+}
+
+function hideNoteHover() {
+  clearTimeout(hoverHideTimer);
+  if (hoverEl) { hoverEl.remove(); hoverEl = null; }
+}
+function scheduleNoteHoverHide() {
+  clearTimeout(hoverHideTimer);
+  hoverHideTimer = setTimeout(hideNoteHover, 220);
+}
+function showNoteHover(anchor, r) {
+  hideNoteHover();
+  const notes = r.notes || [];
+  if (!notes.length) return;
+  hoverEl = document.createElement('div');
+  hoverEl.className = 'note-hover';
+  hoverEl.innerHTML = `<div class="nh-head">${esc(r.ticket)} — internal notes</div>` +
+    notes.map((n) => `<div class="nh-item">
+      <div class="nh-body">${esc(n.detail)}</div>
+      <div class="nh-meta">${esc(n.actor)} · ${esc(fmtDate(n.created_at))}</div>
+    </div>`).join('');
+  document.body.appendChild(hoverEl);
+  placeNear(hoverEl, anchor);
+  // Keep the panel open while the mouse is over it, so long notes can be read
+  hoverEl.addEventListener('mouseenter', () => clearTimeout(hoverHideTimer));
+  hoverEl.addEventListener('mouseleave', scheduleNoteHoverHide);
+}
+
+function closeFloat() {
+  if (floatEl) { floatEl.remove(); floatEl = null; }
+}
+function openFloat(anchor, className, html) {
+  closeFloat();
+  hideNoteHover();
+  floatEl = document.createElement('div');
+  floatEl.className = className;
+  floatEl.innerHTML = html;
+  floatEl.addEventListener('click', (e) => e.stopPropagation());
+  document.body.appendChild(floatEl);
+  placeNear(floatEl, anchor);
+  return floatEl;
+}
+document.addEventListener('click', (e) => {
+  if (floatEl && !floatEl.contains(e.target)) closeFloat();
+});
+
+// Quick internal note straight from an inbox row
+function openQuickNote(anchor, r) {
+  const el = openFloat(anchor, 'float-panel', `
+    <div class="fp-title">Add internal note — <span class="mono">${esc(r.ticket)}</span></div>
+    <textarea maxlength="4000" placeholder="Only you see internal notes…"></textarea>
+    <div class="fp-row">
+      <span class="small faint grow">Ctrl/Cmd+Enter to save</span>
+      <button type="button" class="btn btn-ghost btn-sm" data-x="cancel">Cancel</button>
+      <button type="button" class="btn btn-primary btn-sm" data-x="save">Save note</button>
+    </div>`);
+  const ta = $('textarea', el);
+  ta.focus();
+  const save = async () => {
+    const note = ta.value.trim();
+    if (!note) return toast('Write a note first', 'err');
+    try {
+      await adminApi(`/api/admin/requests/${r.id}/notes`, { method: 'POST', body: { note } });
+      closeFloat();
+      toast(`Note added to ${r.ticket}`, 'ok');
+      await refreshAll(true);
+    } catch (err) { toast(err.message, 'err'); }
+  };
+  $('[data-x="cancel"]', el).addEventListener('click', closeFloat);
+  $('[data-x="save"]', el).addEventListener('click', save);
+  ta.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') save(); });
+}
+
+async function moveToFolder(r, folderId, folderName) {
+  try {
+    await adminApi(`/api/admin/requests/${r.id}`, { method: 'PATCH', body: { folder_id: folderId } });
+    closeFloat();
+    toast(folderId ? `${r.ticket} filed under “${folderName}”` : `${r.ticket} is back in the Inbox`, 'ok');
+    await refreshAll(true);
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+function openFolderMenu(anchor, r) {
+  const item = (fid, label, current) =>
+    `<button type="button" class="fm-item ${current ? 'current' : ''}" data-fid="${esc(fid || '')}">${label}${current ? ' &#10003;' : ''}</button>`;
+  const el = openFloat(anchor, 'float-panel folder-menu', `
+    <div class="fp-title">Move <span class="mono">${esc(r.ticket)}</span> to…</div>
+    ${item('', '&#128229; Inbox (no folder)', !r.folder_id)}
+    ${allFolders.map((f) => item(f.id, `&#128193; ${esc(f.name)}`, r.folder_id === f.id)).join('')}
+    <button type="button" class="fm-item fm-new" data-new="1">&#65291; New folder…</button>`);
+  $$('.fm-item', el).forEach((b) => b.addEventListener('click', async () => {
+    if (b.dataset.new) {
+      const name = (prompt('New folder name:') || '').trim();
+      if (!name) return;
+      try {
+        const res = await adminApi('/api/admin/folders', { method: 'POST', body: { name } });
+        await moveToFolder(r, res.folder.id, res.folder.name);
+      } catch (err) { toast(err.message, 'err'); }
+      return;
+    }
+    const fid = b.dataset.fid || null;
+    const f = allFolders.find((x) => x.id === fid);
+    await moveToFolder(r, fid, f ? f.name : '');
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Inbox
 ['fSearch', 'fService', 'fType', 'fSeverity', 'fStatus'].forEach((id) => {
   $(`#${id}`).addEventListener('input', renderInbox);
@@ -149,6 +345,10 @@ function filteredInbox() {
   const sev = $('#fSeverity').value;
   const st = $('#fStatus').value;
   return allRequests.filter((r) => {
+    if (foldersSupported) {
+      if (currentFolder === 'unfiled' && r.folder_id) return false;
+      if (currentFolder !== 'unfiled' && currentFolder !== 'all' && r.folder_id !== currentFolder) return false;
+    }
     if (st === 'active' && !(r.status === 'open' || r.status === 'in_progress')) return false;
     if (st && st !== 'active' && r.status !== st) return false;
     if (svc && r.service_id !== svc) return false;
@@ -161,6 +361,7 @@ function filteredInbox() {
 
 function renderInbox() {
   if (currentView !== 'inbox') return;
+  hideNoteHover(); // rows are re-rendered; don't leave an orphaned preview behind
   const rows = filteredInbox();
   $('#inboxEmpty').classList.toggle('hidden', rows.length > 0);
   $('#inboxRows').innerHTML = rows.map((r) => `
@@ -174,8 +375,26 @@ function renderInbox() {
       <td class="t-sub">${r.screenshot_count ? `&#128206;${r.screenshot_count}` : ''}</td>
       <td class="t-sub nowrap">${esc(relTime(r.created_at))}</td>
       <td>${statusBadge(r.status)}</td>
+      <td class="t-notes">
+        ${(r.notes || []).length ? `<button type="button" class="note-ind" title="Hover to read notes">&#128221; ${(r.notes || []).length}</button>` : ''}
+        <button type="button" class="cell-btn note-add" title="Add internal note">&#65291;</button>
+        ${foldersSupported ? '<button type="button" class="cell-btn folder-move" title="Move to folder">&#128193;</button>' : ''}
+      </td>
     </tr>`).join('');
-  $$('#inboxRows tr').forEach((tr) => tr.addEventListener('click', () => openDetail(tr.dataset.id)));
+  $$('#inboxRows tr').forEach((tr) => {
+    const r = rows.find((x) => x.id === tr.dataset.id);
+    tr.addEventListener('click', () => openDetail(tr.dataset.id));
+    const ind = $('.note-ind', tr);
+    if (ind) {
+      ind.addEventListener('click', (e) => { e.stopPropagation(); showNoteHover(ind, r); });
+      ind.addEventListener('mouseenter', () => showNoteHover(ind, r));
+      ind.addEventListener('mouseleave', scheduleNoteHoverHide);
+    }
+    const add = $('.note-add', tr);
+    add.addEventListener('click', (e) => { e.stopPropagation(); openQuickNote(add, r); });
+    const mv = $('.folder-move', tr);
+    if (mv) mv.addEventListener('click', (e) => { e.stopPropagation(); openFolderMenu(mv, r); });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -439,6 +658,11 @@ function renderDetail(data) {
       <h3 class="mt1" style="font-size:17px">${esc(r.title)}</h3>
       <div class="small muted">From <strong>${esc(r.submitter_name)}</strong> · <a href="mailto:${esc(r.submitter_email)}">${esc(r.submitter_email)}</a></div>
       ${r.completed_at ? `<div class="small muted">Completed ${esc(fmtDate(r.completed_at))}</div>` : ''}
+      ${foldersSupported ? `<div class="small muted mt1">&#128193; Folder:
+        <select id="dFolderSel" class="folder-sel">
+          <option value="">Inbox (no folder)</option>
+          ${allFolders.map((f) => `<option value="${esc(f.id)}" ${r.folder_id === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
+        </select></div>` : ''}
     </div>
 
     <div class="d-section"><h4>Actions</h4><div class="d-actions">${actions.join('')}</div></div>
@@ -493,6 +717,18 @@ function renderDetail(data) {
 
   // Wire actions
   $$('#drawerBody [data-act]').forEach((b) => b.addEventListener('click', () => handleAction(b.dataset.act, r)));
+  const folderSel = $('#dFolderSel');
+  if (folderSel) {
+    folderSel.addEventListener('change', async () => {
+      const fid = folderSel.value || null;
+      const f = allFolders.find((x) => x.id === fid);
+      try {
+        await adminApi(`/api/admin/requests/${r.id}`, { method: 'PATCH', body: { folder_id: fid } });
+        toast(fid ? `${r.ticket} filed under “${f ? f.name : ''}”` : `${r.ticket} is back in the Inbox`, 'ok');
+        await refreshAll(true);
+      } catch (err) { toast(err.message, 'err'); }
+    });
+  }
   $$('#drawerBody [data-shot]').forEach((a) => a.addEventListener('click', (e) => {
     e.preventDefault();
     $('#lightboxImg').src = a.href;
@@ -665,7 +901,8 @@ $('#overlay').addEventListener('click', closeDrawer);
 $('#lightbox').addEventListener('click', () => $('#lightbox').classList.remove('show'));
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if ($('#lightbox').classList.contains('show')) $('#lightbox').classList.remove('show');
+    if (floatEl) closeFloat();
+    else if ($('#lightbox').classList.contains('show')) $('#lightbox').classList.remove('show');
     else if ($('#modalBack').classList.contains('show')) $('#modalBack').classList.remove('show');
     else closeDrawer();
   }

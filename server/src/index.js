@@ -153,6 +153,7 @@ function publicRequest(row, screenshots) {
     ticket: row.ticket,
     service_id: row.service_id,
     service_name: row.service_name,
+    folder_id: row.folder_id || null,
     type: row.type,
     severity: row.severity,
     title: row.title,
@@ -465,18 +466,25 @@ admin.get('/requests', asyncRoute(async (req, res) => {
   if (q) { params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
 
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  // Internal notes ride along so the dashboard can preview them on hover
+  // without opening each ticket.
   const { rows } = await pool.query(
     `SELECT r.*, s.name AS service_name,
-            COALESCE(sc.n, 0)::int AS screenshot_count
+            COALESCE(sc.n, 0)::int AS screenshot_count,
+            nt.notes
      FROM requests r
      JOIN services s ON s.id = r.service_id
      LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM screenshots GROUP BY request_id) sc ON sc.request_id = r.id
+     LEFT JOIN (SELECT request_id,
+                       json_agg(json_build_object('actor', actor, 'detail', detail, 'created_at', created_at)
+                                ORDER BY created_at DESC) AS notes
+                FROM activity WHERE action = 'note' GROUP BY request_id) nt ON nt.request_id = r.id
      ${where}
      ORDER BY r.created_at DESC
      LIMIT 500`,
     params
   );
-  res.json({ requests: rows.map((r) => ({ ...publicRequest(r, []), screenshots: undefined, screenshot_count: r.screenshot_count })) });
+  res.json({ requests: rows.map((r) => ({ ...publicRequest(r, []), screenshots: undefined, screenshot_count: r.screenshot_count, notes: r.notes || [] })) });
 }));
 
 admin.get('/requests/:id', asyncRoute(async (req, res) => {
@@ -544,6 +552,17 @@ admin.patch('/requests/:id', asyncRoute(async (req, res) => {
   if (b.resolution_note !== undefined) {
     params.push(clean(b.resolution_note, 8000));
     updates.push(`resolution_note = $${params.length}`);
+  }
+  // Personal organization: file the ticket into a folder (null = back to inbox).
+  if (b.folder_id !== undefined) {
+    const folderId = b.folder_id === null || b.folder_id === '' ? null : clean(b.folder_id, 60);
+    if (folderId !== null) {
+      if (!isUuid(folderId)) return res.status(400).json({ error: 'That folder was not found — refresh and try again.' });
+      const f = await pool.query('SELECT id FROM folders WHERE id = $1', [folderId]);
+      if (!f.rows.length) return res.status(400).json({ error: 'That folder was not found — refresh and try again.' });
+    }
+    params.push(folderId);
+    updates.push(`folder_id = $${params.length}`);
   }
   if (newStatus && newStatus !== existing.status) {
     params.push(newStatus);
@@ -707,6 +726,58 @@ admin.delete('/services/:id', asyncRoute(async (req, res) => {
     return res.status(409).json({ error: 'This service has requests attached — hide it instead of deleting.' });
   }
   const { rowCount } = await pool.query('DELETE FROM services WHERE id = $1', [id]);
+  if (!rowCount) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+}));
+
+// Inbox folders — personal organization for the admin dashboard. Filing a
+// ticket into a folder tucks it out of the main inbox; the folder chips pull
+// it back up. Deleting a folder returns its tickets to the inbox
+// (folder_id has ON DELETE SET NULL), so nothing is ever lost.
+admin.get('/folders', asyncRoute(async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT f.*, COALESCE(rc.n, 0)::int AS request_count,
+            COALESCE(rc.active_n, 0)::int AS active_count
+     FROM folders f
+     LEFT JOIN (SELECT folder_id, COUNT(*) AS n,
+                       COUNT(*) FILTER (WHERE status IN ('open', 'in_progress')) AS active_n
+                FROM requests WHERE folder_id IS NOT NULL GROUP BY folder_id) rc ON rc.folder_id = f.id
+     ORDER BY f.sort_order, f.name`
+  );
+  res.json({ folders: rows });
+}));
+
+admin.post('/folders', asyncRoute(async (req, res) => {
+  const name = clean((req.body || {}).name, 60);
+  if (name.length < 1) return res.status(400).json({ error: 'Folder name required' });
+  try {
+    const { rows } = await pool.query('INSERT INTO folders (name) VALUES ($1) RETURNING *', [name]);
+    res.status(201).json({ folder: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'A folder with that name already exists' });
+    throw err;
+  }
+}));
+
+admin.patch('/folders/:id', asyncRoute(async (req, res) => {
+  const id = clean(req.params.id, 60);
+  if (!isUuid(id)) return res.status(404).json({ error: 'Not found' });
+  const name = clean((req.body || {}).name, 60);
+  if (name.length < 1) return res.status(400).json({ error: 'Folder name required' });
+  try {
+    const { rows } = await pool.query('UPDATE folders SET name = $1 WHERE id = $2 RETURNING *', [name, id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ folder: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'A folder with that name already exists' });
+    throw err;
+  }
+}));
+
+admin.delete('/folders/:id', asyncRoute(async (req, res) => {
+  const id = clean(req.params.id, 60);
+  if (!isUuid(id)) return res.status(404).json({ error: 'Not found' });
+  const { rowCount } = await pool.query('DELETE FROM folders WHERE id = $1', [id]);
   if (!rowCount) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true });
 }));
