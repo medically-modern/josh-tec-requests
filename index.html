@@ -141,15 +141,15 @@
     </div>
 
     <div class="card">
-      <h2><span class="stepnum">5</span> Screenshots &amp; recordings <span class="sublabel" style="font-weight:400;font-size:13px;color:var(--muted)">(optional)</span></h2>
-      <p class="hint">A picture is worth a thousand words — attach screenshots, or paste a Loom / video link below.</p>
+      <h2><span class="stepnum">5</span> Screenshots &amp; files <span class="sublabel" style="font-weight:400;font-size:13px;color:var(--muted)">(optional)</span></h2>
+      <p class="hint">A picture is worth a thousand words — attach screenshots or any related file (PDF, Word, Excel, CSV, logs…), or paste a Loom / video link below.</p>
 
-      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Add screenshots">
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Add screenshots or files">
         <div class="dz-icon">&#128247;</div>
-        <div><strong>Click to add screenshots</strong>, drag &amp; drop, or paste from clipboard (Ctrl/Cmd+V)</div>
-        <div class="dz-hint">PNG, JPG, GIF or WebP &middot; up to 6 images &middot; 8 MB each</div>
+        <div><strong>Click to add screenshots or files</strong>, drag &amp; drop, or paste from clipboard (Ctrl/Cmd+V)</div>
+        <div class="dz-hint">Images, PDF, Office docs, CSV, logs, ZIP &middot; up to 6 files &middot; 8 MB each</div>
       </div>
-      <input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp" multiple class="hidden">
+      <input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.log,.md,.rtf,.json,.zip,.heic,.heif,.mp4,.mov,.webm" multiple class="hidden">
       <div class="thumbs" id="thumbs"></div>
 
       <div class="field mt2">

@@ -78,11 +78,14 @@ function render(data) {
 
   const shots = r.screenshots || [];
   $('#rShotsWrap').style.display = shots.length ? '' : 'none';
-  $('#rShots').innerHTML = shots.map((s) => `
+  // Images preview inline; other documents show as download cards
+  $('#rShots').innerHTML = shots.filter(isImageAttachment).map((s) => `
     <a href="${esc(screenshotUrl(s))}" target="_blank" rel="noopener">
       <img src="${esc(screenshotUrl(s))}" alt="" loading="lazy">
       <div class="s-cap">${esc(s.filename)}</div>
     </a>`).join('');
+  const docs = shots.filter((s) => !isImageAttachment(s));
+  $('#rDocs').innerHTML = docs.map(docCard).join('');
 }
 
 $('#trackForm').addEventListener('submit', (e) => { e.preventDefault(); lookup(); });

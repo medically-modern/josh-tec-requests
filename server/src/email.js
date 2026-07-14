@@ -207,7 +207,7 @@ function adminNewRequestEmail(req, adminEmail) {
     `Service:     ${req.service_name}`,
     `Severity:    ${SEVERITY_LABELS[req.severity]}`,
     `From:        ${req.submitter_name} <${req.submitter_email}>`,
-    `Attachments: ${shots} screenshot(s), ${links} video link(s)`,
+    `Attachments: ${shots} file(s), ${links} video link(s)`,
     '',
     'Description:',
     req.description,
@@ -222,7 +222,7 @@ function adminNewRequestEmail(req, adminEmail) {
       <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Severity</td><td>${esc(SEVERITY_LABELS[req.severity])}</td></tr>
       <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Title</td><td><strong>${esc(req.title)}</strong></td></tr>
       <tr><td style="padding:4px 16px 4px 0;color:#64748b;">From</td><td>${esc(req.submitter_name)} &lt;${esc(req.submitter_email)}&gt;</td></tr>
-      <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Attachments</td><td>${shots} screenshot(s), ${links} video link(s)</td></tr>
+      <tr><td style="padding:4px 16px 4px 0;color:#64748b;">Attachments</td><td>${shots} file(s), ${links} video link(s)</td></tr>
     </table>
     <p style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;white-space:pre-wrap;">${esc(req.description)}</p>
     ${req.steps ? `<p style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;white-space:pre-wrap;"><strong>Steps:</strong>\n${esc(req.steps)}</p>` : ''}
