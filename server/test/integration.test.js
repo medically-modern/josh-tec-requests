@@ -378,6 +378,7 @@ async function j(res) {
     assert.ok(!pub.services.some((s) => s.id === newServiceId), 'hidden service still on public list');
   });
 
+  let crId;
   await test('change_request submissions work too', async () => {
     const res = await fetch(`${API}/api/requests`, {
       method: 'POST',
@@ -393,7 +394,91 @@ async function j(res) {
     assert.strictEqual(res.status, 201, JSON.stringify(data));
     assert.strictEqual(data.request.type, 'change_request');
     assert.strictEqual(data.request.screenshots.length, 0);
-    createdIds.push(data.request.id);
+    crId = data.request.id;
+    createdIds.push(crId);
+  });
+
+  let folderId;
+  await test('admin can create a folder', async () => {
+    const name = `[TEST] Folder ${Date.now()}`;
+    const res = await fetch(`${API}/api/admin/folders`, {
+      method: 'POST', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await j(res);
+    assert.strictEqual(res.status, 201, JSON.stringify(data));
+    folderId = data.folder.id;
+    const list = await j(await fetch(`${API}/api/admin/folders`, { headers: adminHeaders }));
+    const f = list.folders.find((x) => x.id === folderId);
+    assert.ok(f, 'created folder missing from list');
+    assert.strictEqual(f.request_count, 0);
+  });
+
+  await test('a request can be filed into a folder and pulled back out', async () => {
+    const move = await fetch(`${API}/api/admin/requests/${crId}`, {
+      method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_id: folderId }),
+    });
+    const moved = await j(move);
+    assert.strictEqual(move.status, 200, JSON.stringify(moved));
+    assert.strictEqual(moved.request.folder_id, folderId);
+
+    const list = await j(await fetch(`${API}/api/admin/folders`, { headers: adminHeaders }));
+    const f = list.folders.find((x) => x.id === folderId);
+    assert.strictEqual(f.request_count, 1, 'folder count did not update');
+    assert.strictEqual(f.active_count, 1, 'active count did not update');
+
+    const back = await j(await fetch(`${API}/api/admin/requests/${crId}`, {
+      method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_id: null }),
+    }));
+    assert.strictEqual(back.request.folder_id, null);
+  });
+
+  await test('bogus folder ids are rejected', async () => {
+    const res = await fetch(`${API}/api/admin/requests/${crId}`, {
+      method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }),
+    });
+    assert.strictEqual(res.status, 400);
+    const res2 = await fetch(`${API}/api/admin/requests/${crId}`, {
+      method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_id: 'not-a-uuid' }),
+    });
+    assert.strictEqual(res2.status, 400);
+  });
+
+  await test('folders can be renamed', async () => {
+    const res = await fetch(`${API}/api/admin/folders/${folderId}`, {
+      method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: `[TEST] Renamed ${Date.now()}` }),
+    });
+    const data = await j(res);
+    assert.strictEqual(res.status, 200, JSON.stringify(data));
+    assert.ok(data.folder.name.startsWith('[TEST] Renamed'));
+  });
+
+  await test('deleting a folder returns its tickets to the inbox', async () => {
+    await fetch(`${API}/api/admin/requests/${crId}`, {
+      method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_id: folderId }),
+    });
+    const del = await fetch(`${API}/api/admin/folders/${folderId}`, { method: 'DELETE', headers: adminHeaders });
+    assert.strictEqual(del.status, 200);
+    const detail = await j(await fetch(`${API}/api/admin/requests/${crId}`, { headers: adminHeaders }));
+    assert.strictEqual(detail.request.folder_id, null, 'ticket still points at the deleted folder');
+  });
+
+  await test('admin list carries internal notes for the hover preview', async () => {
+    const add = await fetch(`${API}/api/admin/requests/${crId}/notes`, {
+      method: 'POST', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: 'Waiting on vendor — check back Friday.' }),
+    });
+    assert.strictEqual(add.status, 201);
+    const list = await j(await fetch(`${API}/api/admin/requests`, { headers: adminHeaders }));
+    const row = list.requests.find((x) => x.id === crId);
+    assert.ok(Array.isArray(row.notes), 'notes array missing from admin list');
+    assert.ok(row.notes.some((n) => n.detail.includes('vendor')), 'note text missing from admin list');
   });
 
   await test('deleting a request cascades (screenshots become 404)', async () => {
