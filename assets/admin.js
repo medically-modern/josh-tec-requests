@@ -153,15 +153,18 @@ function renderFolderBar() {
   }
   const isActive = (r) => r.status === 'open' || r.status === 'in_progress';
   const unfiled = allRequests.filter((r) => !r.folder_id && isActive(r)).length;
-  const chip = (key, label, count) =>
+  // Unread submitter replies per bucket (any status) — a filed-away ticket's
+  // badge is invisible from the main view, so its chip carries the signal.
+  const unseenIn = (match) => allRequests.filter((r) => match(r) && r.unseen_replies > 0).length;
+  const chip = (key, label, count, mail) =>
     `<button type="button" class="fchip ${currentFolder === key ? 'active' : ''}" data-folder="${esc(key)}">
-       ${label}${count === null ? '' : ` <span class="fcount">${count}</span>`}
+       ${label}${count === null ? '' : ` <span class="fcount">${count}</span>`}${mail ? ` <span class="fmail" title="${mail} ticket${mail > 1 ? 's' : ''} with unread replies">&#9993;${mail}</span>` : ''}
      </button>`;
   const cur = allFolders.find((f) => f.id === currentFolder);
   bar.innerHTML =
-    chip('unfiled', '&#128229; Inbox', unfiled) +
-    allFolders.map((f) => chip(f.id, `&#128193; ${esc(f.name)}`, f.active_count)).join('') +
-    chip('all', 'Everything', null) +
+    chip('unfiled', '&#128229; Inbox', unfiled, unseenIn((r) => !r.folder_id)) +
+    allFolders.map((f) => chip(f.id, `&#128193; ${esc(f.name)}`, f.active_count, unseenIn((r) => r.folder_id === f.id))).join('') +
+    chip('all', 'Everything', null, null) +
     '<button type="button" class="fchip fchip-new" id="folderNew" title="Create a folder to organize tickets">&#65291; New folder</button>' +
     (cur ? `<span class="fmanage">
        <button type="button" class="btn btn-ghost btn-sm" id="folderRename">Rename</button>
@@ -338,6 +341,20 @@ function openFolderMenu(anchor, r) {
 
 const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 
+// "They responded" indicator: loud while unread, quiet once the ticket has
+// been opened (opening it marks the replies as read server-side).
+function replyBadge(r) {
+  const unseen = r.unseen_replies || 0;
+  if (unseen > 0) {
+    return `<span class="badge badge-reply" title="Unread submitter repl${unseen > 1 ? 'ies' : 'y'} · ${esc(relTime(r.last_reply_at))}">&#9993; ${unseen} new repl${unseen > 1 ? 'ies' : 'y'}</span>`;
+  }
+  const total = r.reply_count || 0;
+  if (total > 0) {
+    return `<span class="badge badge-reply-seen" title="Submitter replies in this thread (all read)">&#9993; ${total}</span>`;
+  }
+  return '';
+}
+
 function filteredInbox() {
   const q = $('#fSearch').value.trim().toLowerCase();
   const svc = $('#fService').value;
@@ -365,11 +382,11 @@ function renderInbox() {
   const rows = filteredInbox();
   $('#inboxEmpty').classList.toggle('hidden', rows.length > 0);
   $('#inboxRows').innerHTML = rows.map((r) => `
-    <tr data-id="${esc(r.id)}">
+    <tr data-id="${esc(r.id)}" class="${r.unseen_replies ? 'has-reply' : ''}">
       <td class="t-ticket">${esc(r.ticket)}</td>
       <td>${sevBadge(r.severity)}</td>
       <td>${typeBadge(r.type)}</td>
-      <td><div class="t-title">${esc(r.title)}</div></td>
+      <td><div class="t-title">${esc(r.title)}</div>${replyBadge(r)}</td>
       <td class="t-sub">${esc(r.service_name)}</td>
       <td class="t-sub">${esc(r.submitter_name)}</td>
       <td class="t-sub">${r.screenshot_count ? `&#128206;${r.screenshot_count}` : ''}</td>
@@ -401,9 +418,9 @@ function renderInbox() {
 // Board
 function kcard(r) {
   return `<div class="kcard" data-id="${esc(r.id)}">
-    <div class="flex" style="gap:6px">
+    <div class="flex flex-wrap" style="gap:6px">
       <span class="mono small" style="font-weight:700;color:var(--accent-dark)">${esc(r.ticket)}</span>
-      ${sevBadge(r.severity)} ${typeBadge(r.type)}
+      ${sevBadge(r.severity)} ${typeBadge(r.type)} ${replyBadge(r)}
     </div>
     <div class="k-title">${esc(r.title)}</div>
     <div class="k-meta">
@@ -434,10 +451,10 @@ function renderDone() {
     .sort((a, b) => new Date(b.completed_at || b.updated_at) - new Date(a.completed_at || a.updated_at));
   $('#doneEmpty').classList.toggle('hidden', rows.length > 0);
   $('#doneRows').innerHTML = rows.map((r) => `
-    <tr data-id="${esc(r.id)}">
+    <tr data-id="${esc(r.id)}" class="${r.unseen_replies ? 'has-reply' : ''}">
       <td class="t-ticket">${esc(r.ticket)}</td>
       <td>${typeBadge(r.type)}</td>
-      <td><div class="t-title">${esc(r.title)}</div></td>
+      <td><div class="t-title">${esc(r.title)}</div>${replyBadge(r)}</td>
       <td class="t-sub">${esc(r.service_name)}</td>
       <td class="t-sub">${esc(r.submitter_name)}</td>
       <td class="t-sub nowrap">${esc(r.completed_at ? fmtDate(r.completed_at) : '—')}</td>
@@ -590,6 +607,14 @@ async function loadDetail(id) {
   }
   if (currentDetailId !== id) return;
   renderDetail(data);
+  // The server marked this ticket's replies as read; clear the badge locally
+  // so the list behind the drawer doesn't keep flagging it until next refresh.
+  const row = allRequests.find((x) => x.id === id);
+  if (row && row.unseen_replies) {
+    row.unseen_replies = 0;
+    renderFolderBar();
+    renderView();
+  }
 }
 
 async function syncInBackground(id) {

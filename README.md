@@ -38,6 +38,7 @@ GitHub Pages (repo root) ──HTTPS──▶  Railway "handsome-simplicity" pro
 - **Inbox** — open + in-progress requests sorted by severity, with search and filters (service / type / severity / status)
 - **Folders** — file tickets into custom folders (e.g. “Waiting on vendor”) to tuck them out of the inbox, and pull them back up with one click on the folder chips; deleting a folder returns its tickets to the inbox
 - **Quick notes from the inbox** — add an internal note straight from any row (the ✚ button after Status), and hover the 📝 badge to read all of a ticket's notes enlarged, without opening it
+- **New-reply badges** — when a submitter answers a ticket email, the row lights up with “✉ new reply” (and its folder chip shows ✉) until you open the ticket; already-read threads keep a quiet ✉ count
 - **Board** — kanban columns (Open / In progress / Recently completed)
 - **Completed** — everything finished, with completion date and "submitter notified?" state
 - **Analytics** — totals, avg. time-to-complete, breakdowns by service/severity/type, 30-day submission chart

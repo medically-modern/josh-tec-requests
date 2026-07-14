@@ -561,6 +561,39 @@ async function j(res) {
     assert.ok(row.notes.some((n) => n.detail.includes('vendor')), 'note text missing from admin list');
   });
 
+  await test('inbound replies show as unseen in the list and clear when the ticket is opened', async () => {
+    // Inbound replies are only ever created by the IMAP reader, so this test
+    // injects one directly and needs DATABASE_URL pointing at the API's db.
+    if (!process.env.DATABASE_URL) {
+      console.log('    (DATABASE_URL not set — skipping the reply-badge check)');
+      return;
+    }
+    const { Pool } = require('pg');
+    const db = new Pool({ connectionString: process.env.DATABASE_URL });
+    try {
+      await db.query(
+        `INSERT INTO messages (request_id, direction, kind, from_addr, to_addr, subject, body, message_id)
+         VALUES ($1, 'inbound', 'reply', 'nurse@medicallymodern.com', 'desk@medicallymodern.com',
+                 'Re: [TEST]', 'Yes, still happening after the update.', $2)`,
+        [crId, `<test-reply-${Date.now()}@medicallymodern.com>`]
+      );
+      let list = await j(await fetch(`${API}/api/admin/requests`, { headers: adminHeaders }));
+      let row = list.requests.find((x) => x.id === crId);
+      assert.strictEqual(row.unseen_replies, 1, 'reply not counted as unseen');
+      assert.strictEqual(row.reply_count, 1, 'reply_count missing');
+      assert.ok(row.last_reply_at, 'last_reply_at missing');
+
+      // Opening the ticket (detail GET) marks it read
+      await fetch(`${API}/api/admin/requests/${crId}`, { headers: adminHeaders });
+      list = await j(await fetch(`${API}/api/admin/requests`, { headers: adminHeaders }));
+      row = list.requests.find((x) => x.id === crId);
+      assert.strictEqual(row.unseen_replies, 0, 'viewing did not clear the unseen count');
+      assert.strictEqual(row.reply_count, 1, 'reply_count should survive being read');
+    } finally {
+      await db.end();
+    }
+  });
+
   await test('deleting a request cascades (screenshots become 404)', async () => {
     const shotUrl = `${API}${created.screenshots[0].url}`;
     const del = await fetch(`${API}/api/admin/requests/${created.id}`, { method: 'DELETE', headers: adminHeaders });
