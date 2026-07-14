@@ -5,7 +5,13 @@ $('#logoMark').innerHTML = LOGO_SVG;
 
 const MAX_FILES = 6;
 const MAX_BYTES = 8 * 1024 * 1024;
+// Screenshots are the common case, but any common document type is accepted.
+// Images get inline previews; other files upload the same way and are
+// download-only on the other side.
 const OK_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const DOC_EXTS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt', 'log', 'md', 'rtf', 'json', 'zip', 'heic', 'heif', 'mp4', 'mov', 'webm'];
+const isImage = (f) => OK_TYPES.includes(f.type);
+const fileOk = (f) => isImage(f) || DOC_EXTS.includes((f.name.split('.').pop() || '').toLowerCase());
 
 let files = [];          // { file, previewUrl }
 let selectedType = '';
@@ -116,8 +122,8 @@ function addFiles(list) {
   const incoming = Array.from(list || []);
   let added = 0;
   for (const f of incoming) {
-    if (!OK_TYPES.includes(f.type)) {
-      toast(`"${f.name}" skipped — only PNG, JPG, GIF or WebP images are supported.`, 'err');
+    if (!fileOk(f)) {
+      toast(`"${f.name}" skipped — attach images or common documents (PDF, Office, CSV, logs, ZIP…).`, 'err');
       continue;
     }
     if (f.size > MAX_BYTES) {
@@ -125,14 +131,14 @@ function addFiles(list) {
       continue;
     }
     if (files.length >= MAX_FILES) {
-      toast(`Maximum ${MAX_FILES} screenshots — extra files skipped.`, 'err');
+      toast(`Maximum ${MAX_FILES} files — extra files skipped.`, 'err');
       break;
     }
     if (files.some((x) => x.file.name === f.name && x.file.size === f.size)) {
       toast(`"${f.name}" is already attached.`);
       continue;
     }
-    files.push({ file: f, previewUrl: URL.createObjectURL(f) });
+    files.push({ file: f, previewUrl: isImage(f) ? URL.createObjectURL(f) : null });
     added++;
   }
   renderThumbs();
@@ -145,14 +151,15 @@ function renderThumbs() {
   files.forEach((item, i) => {
     const div = document.createElement('div');
     div.className = 'thumb';
+    const ext = (item.file.name.split('.').pop() || 'file').slice(0, 5).toUpperCase();
     div.innerHTML = `
-      <img alt="">
+      ${item.previewUrl ? '<img alt="">' : `<div class="doc-face"><span class="doc-badge">${esc(ext)}</span></div>`}
       <button type="button" class="t-x" aria-label="Remove">&#10005;</button>
       <div class="t-meta"><div class="t-name"></div>${fmtBytes(item.file.size)}</div>`;
-    div.querySelector('img').src = item.previewUrl;
+    if (item.previewUrl) div.querySelector('img').src = item.previewUrl;
     div.querySelector('.t-name').textContent = item.file.name;
     div.querySelector('.t-x').addEventListener('click', () => {
-      URL.revokeObjectURL(item.previewUrl);
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
       files.splice(i, 1);
       renderThumbs();
     });
@@ -345,7 +352,7 @@ function showSuccess(data) {
     ['Summary', r.title],
     ['Submitted by', `${r.submitter_name} (${r.submitter_email})`],
     ['Video links', (r.video_links && r.video_links.length) ? r.video_links.join('\n') : 'None'],
-    ['Screenshots', r.screenshots.length ? `${r.screenshots.length} file(s) — verified below` : 'None'],
+    ['Attachments', r.screenshots.length ? `${r.screenshots.length} file(s) — verified below` : 'None'],
   ];
   $('#okSummary').innerHTML = rows.map(([k, v]) =>
     `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(v).replace(/\n/g, '<br>')}</div></div>`).join('');
@@ -358,18 +365,27 @@ function showSuccess(data) {
     r.screenshots.forEach((s) => {
       const div = document.createElement('div');
       div.className = 'thumb';
+      const image = isImageAttachment(s);
       div.innerHTML = `
-        <img alt="" loading="lazy">
+        ${image ? '<img alt="" loading="lazy">' : `<a class="doc-face" href="${esc(screenshotUrl(s))}" title="Download"><span class="doc-badge">${esc(extLabel(s.filename))}</span></a>`}
         <div class="t-meta">
           <div class="t-name"></div>${fmtBytes(s.size_bytes)}
           <div class="t-verify">&#8987; Verifying…</div>
         </div>`;
       div.querySelector('.t-name').textContent = s.filename;
-      const img = div.querySelector('img');
       const badge = div.querySelector('.t-verify');
-      img.addEventListener('load', () => { badge.textContent = '✓ Stored on server'; badge.className = 't-verify ok'; });
-      img.addEventListener('error', () => { badge.textContent = '⚠ Could not verify — contact Josh'; badge.className = 't-verify warn'; });
-      img.src = screenshotUrl(s);
+      const ok = () => { badge.textContent = '✓ Stored on server'; badge.className = 't-verify ok'; };
+      const warn = () => { badge.textContent = '⚠ Could not verify — contact Josh'; badge.className = 't-verify warn'; };
+      if (image) {
+        const img = div.querySelector('img');
+        img.addEventListener('load', ok);
+        img.addEventListener('error', warn);
+        img.src = screenshotUrl(s);
+      } else {
+        // Documents can't be probed with an <img>; a HEAD request confirms the
+        // stored bytes are retrievable without downloading them.
+        fetch(screenshotUrl(s), { method: 'HEAD' }).then((res) => (res.ok ? ok() : warn())).catch(warn);
+      }
       host.appendChild(div);
     });
   } else {

@@ -29,7 +29,7 @@ GitHub Pages (repo root) ──HTTPS──▶  Railway "handsome-simplicity" pro
 **Employee form**
 - Service dropdown driven by the database (add/hide services from the admin dashboard, no code changes)
 - Issue vs. Change Request, with severity/priority descriptions that adapt to the type
-- Up to 6 screenshots (8 MB each) via click, drag & drop, or clipboard paste; Loom/video link fields
+- Up to 6 attachments (8 MB each) via click, drag & drop, or clipboard paste — screenshots get inline previews, and any common document (PDF, Word, Excel, CSV, logs, ZIP…) can be attached too and is served download-only; Loom/video link fields
 - Upload progress bar; on success the page reloads each screenshot **from the server** and shows "✓ Stored on server" — proof the attachment actually arrived
 - Ticket numbers (`MM-1001`, `MM-1002`, …) and a tracking link
 - Remembers name/email for next time; emails are `@medicallymodern.com` only

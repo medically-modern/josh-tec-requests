@@ -192,9 +192,89 @@ async function j(res) {
     const res = await fetch(`${API}${s.url}`);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.headers.get('content-type'), 'image/png');
+    assert.ok(res.headers.get('content-disposition').startsWith('inline'), 'images should render inline');
     const body = Buffer.from(await res.arrayBuffer());
     assert.strictEqual(body.length, png1.length, 'size mismatch');
     assert.ok(body.equals(png1), 'bytes do not match the uploaded file');
+  });
+
+  await test('non-image documents (PDF, CSV) upload and download back byte-exact', async () => {
+    const pdf = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n');
+    const csv = Buffer.from('column_a,column_b\n1,2\n3,4\n');
+    const res = await fetch(`${API}/api/requests`, {
+      method: 'POST',
+      body: fd(
+        {
+          service_id: serviceId, type: 'issue', severity: 'medium',
+          title: '[TEST] Claims export produces a corrupted file',
+          description: 'Attached the corrupted export and the vendor error report for reference.',
+          submitter_name: 'Doc Tester', submitter_email: 'doc.tester@medicallymodern.com',
+        },
+        [
+          { buf: pdf, mime: 'application/pdf', name: 'vendor-error-report.pdf' },
+          { buf: csv, mime: 'text/csv', name: 'corrupted-export.csv' },
+          { buf: makePng(64, 64, [10, 200, 90]), mime: 'image/png', name: 'error-toast.png' },
+        ]
+      ),
+    });
+    const data = await j(res);
+    assert.strictEqual(res.status, 201, JSON.stringify(data));
+    createdIds.push(data.request.id);
+    assert.strictEqual(data.request.screenshots.length, 3);
+
+    const pdfMeta = data.request.screenshots.find((x) => x.filename.endsWith('.pdf'));
+    const pdfRes = await fetch(`${API}${pdfMeta.url}`);
+    assert.strictEqual(pdfRes.status, 200);
+    assert.strictEqual(pdfRes.headers.get('content-type'), 'application/pdf');
+    assert.ok(pdfRes.headers.get('content-disposition').startsWith('attachment'), 'documents must be download-only');
+    assert.ok(Buffer.from(await pdfRes.arrayBuffer()).equals(pdf), 'pdf bytes do not match');
+
+    const csvMeta = data.request.screenshots.find((x) => x.filename.endsWith('.csv'));
+    const csvRes = await fetch(`${API}${csvMeta.url}`);
+    assert.ok(csvRes.headers.get('content-disposition').startsWith('attachment'), 'csv must be download-only');
+    assert.ok(Buffer.from(await csvRes.arrayBuffer()).equals(csv), 'csv bytes do not match');
+
+    const pngMeta = data.request.screenshots.find((x) => x.filename.endsWith('.png'));
+    const pngRes = await fetch(`${API}${pngMeta.url}`);
+    assert.ok(pngRes.headers.get('content-disposition').startsWith('inline'), 'images should stay inline');
+  });
+
+  await test('dangerous or unknown file types are rejected', async () => {
+    for (const f of [
+      { name: 'evil.html', mime: 'text/html' },
+      { name: 'payload.svg', mime: 'image/svg+xml' },
+      { name: 'run.exe', mime: 'application/octet-stream' },
+      { name: 'noextension', mime: 'application/octet-stream' },
+    ]) {
+      const res = await fetch(`${API}/api/requests`, {
+        method: 'POST',
+        body: fd(
+          {
+            service_id: serviceId, type: 'issue', severity: 'low',
+            title: '[TEST] File type rejection', description: 'This upload should be rejected outright.',
+            submitter_name: 'Doc Tester', submitter_email: 'doc.tester@medicallymodern.com',
+          },
+          [{ buf: Buffer.from('<script>alert(1)</script>'), mime: f.mime, name: f.name }]
+        ),
+      });
+      assert.strictEqual(res.status, 400, `${f.name} should have been rejected`);
+    }
+  });
+
+  await test('a file renamed to .pdf is rejected by its signature', async () => {
+    const res = await fetch(`${API}/api/requests`, {
+      method: 'POST',
+      body: fd(
+        {
+          service_id: serviceId, type: 'issue', severity: 'low',
+          title: '[TEST] Fake PDF rejection', description: 'Not actually a PDF underneath the extension.',
+          submitter_name: 'Doc Tester', submitter_email: 'doc.tester@medicallymodern.com',
+        },
+        [{ buf: Buffer.from('definitely not a pdf'), mime: 'application/pdf', name: 'fake.pdf' }]
+      ),
+    });
+    assert.strictEqual(res.status, 400);
+    assert.ok((await j(res)).error.includes('valid PDF'));
   });
 
   await test('track endpoint returns ticket for correct email, hides it for wrong email', async () => {

@@ -88,5 +88,24 @@ function screenshotUrl(s) {
   return API_BASE + (s.url || `/api/screenshots/${s.id}`);
 }
 
+// Attachment helpers — images preview inline; every other file type is
+// download-only (the API serves non-images with Content-Disposition: attachment).
+const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+function isImageAttachment(s) {
+  return IMAGE_MIMES.includes(s.mime);
+}
+function extLabel(name) {
+  const ext = String(name || '').split('.').pop();
+  return (ext && ext.length <= 5 ? ext : 'file').toUpperCase();
+}
+function docCard(s) {
+  return `<a class="doc-card" href="${esc(screenshotUrl(s))}">
+    <span class="doc-badge">${esc(extLabel(s.filename))}</span>
+    <span class="doc-meta"><span class="doc-name" title="${esc(s.filename)}">${esc(s.filename)}</span>
+    <span class="doc-size">${fmtBytes(s.size_bytes)} · click to download</span></span>
+    <span class="doc-dl">&#8595;</span>
+  </a>`;
+}
+
 // Medically Modern animated logo (assets/logo.gif); assets/logo.png is the static fallback/favicon
 const LOGO_SVG = '<img src="assets/logo.gif" alt="Medically Modern" width="38" height="38" style="display:block" onerror="this.src=\'assets/logo.png\'">';

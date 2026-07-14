@@ -24,7 +24,7 @@ function sectionRow(cls, label, count) {
 
 function metaChips(r) {
   const bits = [];
-  if (r.screenshot_count > 0) bits.push(`&#128247; ${r.screenshot_count} screenshot${r.screenshot_count === 1 ? '' : 's'}`);
+  if (r.screenshot_count > 0) bits.push(`&#128206; ${r.screenshot_count} file${r.screenshot_count === 1 ? '' : 's'}`);
   if (r.video_count > 0) bits.push(`&#127909; ${r.video_count} video${r.video_count === 1 ? '' : 's'}`);
   if (r.message_count > 0) bits.push(`&#9993;&#65039; ${r.message_count} email${r.message_count === 1 ? '' : 's'}`);
   if (r.has_steps) bits.push('&#128221; steps');
@@ -98,12 +98,15 @@ function detailHtml(data) {
       r.video_links.map((u) => `<li><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></li>`).join('') + '</ul>');
   }
   if ((r.screenshots || []).length) {
-    left += detailSection(`Screenshots (${r.screenshots.length})`, `<div class="shot-grid">` +
-      r.screenshots.map((s) => `
+    const imgs = r.screenshots.filter(isImageAttachment);
+    const docs = r.screenshots.filter((s) => !isImageAttachment(s));
+    left += detailSection(`Attachments (${r.screenshots.length})`,
+      (imgs.length ? `<div class="shot-grid">` + imgs.map((s) => `
         <a href="${esc(screenshotUrl(s))}" target="_blank" rel="noopener">
           <img src="${esc(screenshotUrl(s))}" alt="" loading="lazy">
           <div class="s-cap">${esc(s.filename)}</div>
-        </a>`).join('') + '</div>');
+        </a>`).join('') + '</div>' : '') +
+      (docs.length ? `<div class="${imgs.length ? 'mt1' : ''}">${docs.map(docCard).join('')}</div>` : ''));
   }
   if (r.resolution_note) left += detailSection('Resolution note', `<div class="dd-pre">${esc(r.resolution_note)}</div>`);
   html += `<div>${left}</div>`;

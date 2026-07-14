@@ -671,12 +671,14 @@ function renderDetail(data) {
     ${r.steps ? `<div class="d-section"><h4>Steps to reproduce</h4><pre class="d-pre">${esc(r.steps)}</pre></div>` : ''}
     ${r.resolution_note ? `<div class="d-section" style="background:var(--green-soft)"><h4>Resolution note</h4><pre class="d-pre">${esc(r.resolution_note)}</pre></div>` : ''}
 
-    ${shots.length ? `<div class="d-section"><h4>Screenshots (${shots.length})</h4>
-      <div class="shot-grid">${shots.map((s) => `
+    ${shots.length ? `<div class="d-section"><h4>Attachments (${shots.length})</h4>
+      ${shots.some(isImageAttachment) ? `<div class="shot-grid">${shots.filter(isImageAttachment).map((s) => `
         <a href="${esc(screenshotUrl(s))}" data-shot="1">
           <img src="${esc(screenshotUrl(s))}" alt="" loading="lazy">
           <div class="s-cap" title="${esc(s.filename)}">${esc(s.filename)} · ${fmtBytes(s.size_bytes)}</div>
-        </a>`).join('')}</div></div>` : ''}
+        </a>`).join('')}</div>` : ''}
+      ${shots.some((s) => !isImageAttachment(s)) ? `<div class="${shots.some(isImageAttachment) ? 'mt2' : ''}">${shots.filter((s) => !isImageAttachment(s)).map(docCard).join('')}</div>` : ''}
+    </div>` : ''}
 
     ${links.length ? `<div class="d-section"><h4>Video links</h4>${links.map((l) =>
       `<div class="small" style="overflow-wrap:anywhere">&#127909; <a href="${esc(l)}" target="_blank" rel="noopener">${esc(l)}</a></div>`).join('')}</div>` : ''}

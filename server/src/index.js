@@ -84,16 +84,48 @@ function requireAdmin(req, res, next) {
 }
 
 // ---------------------------------------------------------------------------
-// Uploads — images only, verified by magic bytes, max 8 MB x 6 files
-const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+// Uploads — screenshots are the common case, but any common document type is
+// accepted alongside them (max 8 MB x 6 files). Images are verified by magic
+// bytes and previewed inline; every other type is stored as-is and only ever
+// served as a download, so a crafted file can never execute in this origin.
+const IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const DOC_TYPES = new Map([
+  ['pdf', 'application/pdf'],
+  ['doc', 'application/msword'],
+  ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  ['xls', 'application/vnd.ms-excel'],
+  ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  ['ppt', 'application/vnd.ms-powerpoint'],
+  ['pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+  ['csv', 'text/csv'],
+  ['txt', 'text/plain'],
+  ['log', 'text/plain'],
+  ['md', 'text/plain'],
+  ['rtf', 'application/rtf'],
+  ['json', 'application/json'],
+  ['zip', 'application/zip'],
+  ['heic', 'image/heic'],
+  ['heif', 'image/heif'],
+  ['mp4', 'video/mp4'],
+  ['mov', 'video/quicktime'],
+  ['webm', 'video/webm'],
+  // image extensions map here too, so a picture with a generic mimetype
+  // still goes down the verified-image path below
+  ['png', 'image/png'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['gif', 'image/gif'],
+  ['webp', 'image/webp'],
+]);
+const fileExt = (name) => String(name || '').split('.').pop().toLowerCase();
+const TYPE_ERROR = 'That file type is not supported — attach images, PDF, Office documents, CSV/text/log, JSON, or ZIP files.';
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024, files: 6 },
   fileFilter(req, file, cb) {
-    if (!ALLOWED_MIME.has(file.mimetype)) {
-      return cb(new Error('Only PNG, JPEG, GIF, or WebP images are allowed'));
-    }
-    cb(null, true);
+    if (IMAGE_MIME.has(file.mimetype) || DOC_TYPES.has(fileExt(file.originalname))) return cb(null, true);
+    return cb(new Error(TYPE_ERROR));
   },
 });
 
@@ -245,9 +277,9 @@ app.post(
     upload.array('screenshots', 6)(req, res, (err) => {
       if (err) {
         const msg = err.code === 'LIMIT_FILE_SIZE'
-          ? 'Each screenshot must be 8 MB or smaller'
+          ? 'Each file must be 8 MB or smaller'
           : err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE'
-            ? 'You can attach up to 6 screenshots'
+            ? 'You can attach up to 6 files'
             : err.message || 'Upload failed';
         return res.status(400).json({ error: msg });
       }
@@ -280,14 +312,30 @@ app.post(
     const svc = await pool.query('SELECT id, name FROM services WHERE id = $1 AND active = TRUE', [serviceId]);
     if (!svc.rows.length) return res.status(400).json({ error: 'That service was not found — refresh the page and pick again.' });
 
-    // Verify every upload is really an image before we store anything
+    // Verify every upload before storing: anything claiming to be a
+    // previewable image must really be one (magic bytes), and documents must
+    // match their extension's signature where the format has one.
     const files = req.files || [];
     for (const f of files) {
-      const sniffed = sniffImage(f.buffer);
-      if (!sniffed) {
-        return res.status(400).json({ error: `"${f.originalname}" does not look like a valid image file.` });
+      const ext = fileExt(f.originalname);
+      const claimsImage = IMAGE_MIME.has(f.mimetype) || IMAGE_MIME.has(DOC_TYPES.get(ext) || '');
+      if (claimsImage) {
+        const sniffed = sniffImage(f.buffer);
+        if (!sniffed) {
+          return res.status(400).json({ error: `"${f.originalname}" does not look like a valid image file.` });
+        }
+        f.verifiedMime = sniffed;
+        continue;
       }
-      f.verifiedMime = sniffed;
+      const mapped = DOC_TYPES.get(ext);
+      if (!mapped) return res.status(400).json({ error: `"${f.originalname}": ${TYPE_ERROR}` });
+      if (mapped === 'application/pdf' && f.buffer.slice(0, 5).toString('ascii') !== '%PDF-') {
+        return res.status(400).json({ error: `"${f.originalname}" does not look like a valid PDF file.` });
+      }
+      if (['docx', 'xlsx', 'pptx', 'zip'].includes(ext) && !(f.buffer[0] === 0x50 && f.buffer[1] === 0x4b)) {
+        return res.status(400).json({ error: `"${f.originalname}" does not look like a valid .${ext} file.` });
+      }
+      f.verifiedMime = mapped;
     }
 
     const client = await pool.connect();
@@ -311,7 +359,7 @@ app.post(
       }
       await client.query(
         'INSERT INTO activity (request_id, actor, action, detail) VALUES ($1,$2,$3,$4)',
-        [created.id, submitterName, 'created', `Submitted with ${files.length} screenshot(s) and ${videoLinks.length} video link(s)`]
+        [created.id, submitterName, 'created', `Submitted with ${files.length} file(s) and ${videoLinks.length} video link(s)`]
       );
       await client.query('COMMIT');
     } catch (err) {
@@ -361,10 +409,13 @@ app.get('/api/screenshots/:id', asyncRoute(async (req, res) => {
   const { rows } = await pool.query('SELECT filename, mime, size_bytes, data FROM screenshots WHERE id = $1', [id]);
   if (!rows.length) return res.status(404).json({ error: 'Not found' });
   const s = rows[0];
+  // Verified images render inline (previews); every other type is
+  // download-only so a crafted file can never execute in this origin.
+  const inline = IMAGE_MIME.has(s.mime);
   res.set({
-    'Content-Type': s.mime,
+    'Content-Type': inline ? s.mime : s.mime || 'application/octet-stream',
     'Content-Length': String(s.size_bytes),
-    'Content-Disposition': `inline; filename="${s.filename.replace(/[^\w.\- ]/g, '_')}"`,
+    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${s.filename.replace(/[^\w.\- ]/g, '_')}"`,
     'Cache-Control': 'private, max-age=31536000, immutable',
     'X-Content-Type-Options': 'nosniff',
   });
