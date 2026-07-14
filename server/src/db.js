@@ -108,8 +108,12 @@ CREATE INDEX IF NOT EXISTS idx_messages_request ON messages (request_id, created
 CREATE UNIQUE INDEX IF NOT EXISTS uq_messages_message_id ON messages (message_id) WHERE message_id IS NOT NULL;
 `;
 
+// [name, description, sort_order]
+const PATIENT_ISSUE = ['Patient Issue', 'General patient issues and concerns', 15];
+
 const DEFAULT_SERVICES = [
   ['Patient Portal', 'Patient-facing portal and account tools', 10],
+  PATIENT_ISSUE,
   ['Scheduling System', 'Appointment booking and calendar tools', 20],
   ['Billing & Claims', 'Invoicing, claims, and payment tools', 30],
   ['Provider Dashboard', 'Internal provider-facing dashboard', 40],
@@ -117,6 +121,12 @@ const DEFAULT_SERVICES = [
   ['Internal Tools', 'Automations, scripts, and internal utilities', 60],
   ['Other / Not Listed', 'Anything that does not fit an existing service', 999],
 ];
+
+// Services that must exist on EVERY deploy, not only on a brand-new database.
+// The seed loop above runs only when the services table is empty, so an
+// already-seeded (production) database would never pick up a newly added
+// service without this. Applied idempotently on every startup.
+const ENSURED_SERVICES = [PATIENT_ISSUE];
 
 async function connectWithRetry(attempts = 30, delayMs = 2000) {
   for (let i = 1; i <= attempts; i++) {
@@ -145,6 +155,18 @@ async function migrate() {
     }
     console.log(`Seeded ${DEFAULT_SERVICES.length} starter services (editable in the admin dashboard)`);
   }
+
+  // Ensure required services exist even when the table was already seeded on an
+  // earlier deploy. ON CONFLICT (name) DO NOTHING makes this safe to run every
+  // startup: it never duplicates a row and never un-hides a service the admin
+  // has intentionally hidden or renamed.
+  for (const [name, description, sort] of ENSURED_SERVICES) {
+    await pool.query(
+      'INSERT INTO services (name, description, sort_order) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING',
+      [name, description, sort]
+    );
+  }
+
   console.log('Database migrated and ready');
 }
 
