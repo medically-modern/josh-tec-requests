@@ -177,6 +177,19 @@ async function migrate() {
     );
   }
 
+  // messages.seen_at powers the "new reply" badges in the admin inbox. The
+  // backfill marks replies that predate the feature as already read, and must
+  // run exactly once — guarded by the column's existence, NOT re-run on every
+  // startup (that would silently mark genuinely-unread replies as read).
+  const seenCol = await pool.query(
+    "SELECT 1 FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'seen_at'"
+  );
+  if (!seenCol.rows.length) {
+    await pool.query('ALTER TABLE messages ADD COLUMN seen_at TIMESTAMPTZ');
+    await pool.query("UPDATE messages SET seen_at = created_at WHERE direction = 'inbound'");
+    console.log('Added messages.seen_at (historical replies marked as read)');
+  }
+
   console.log('Database migrated and ready');
 }
 

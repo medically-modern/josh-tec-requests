@@ -517,12 +517,15 @@ admin.get('/requests', asyncRoute(async (req, res) => {
   if (q) { params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
 
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-  // Internal notes ride along so the dashboard can preview them on hover
-  // without opening each ticket.
+  // Internal notes and submitter-reply counts ride along so the dashboard can
+  // preview notes on hover and flag unread replies without opening each ticket.
   const { rows } = await pool.query(
     `SELECT r.*, s.name AS service_name,
             COALESCE(sc.n, 0)::int AS screenshot_count,
-            nt.notes
+            nt.notes,
+            COALESCE(rp.reply_count, 0)::int AS reply_count,
+            COALESCE(rp.unseen_replies, 0)::int AS unseen_replies,
+            rp.last_reply_at
      FROM requests r
      JOIN services s ON s.id = r.service_id
      LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM screenshots GROUP BY request_id) sc ON sc.request_id = r.id
@@ -530,12 +533,27 @@ admin.get('/requests', asyncRoute(async (req, res) => {
                        json_agg(json_build_object('actor', actor, 'detail', detail, 'created_at', created_at)
                                 ORDER BY created_at DESC) AS notes
                 FROM activity WHERE action = 'note' GROUP BY request_id) nt ON nt.request_id = r.id
+     LEFT JOIN (SELECT request_id,
+                       COUNT(*) AS reply_count,
+                       COUNT(*) FILTER (WHERE seen_at IS NULL) AS unseen_replies,
+                       MAX(created_at) AS last_reply_at
+                FROM messages WHERE direction = 'inbound' GROUP BY request_id) rp ON rp.request_id = r.id
      ${where}
      ORDER BY r.created_at DESC
      LIMIT 500`,
     params
   );
-  res.json({ requests: rows.map((r) => ({ ...publicRequest(r, []), screenshots: undefined, screenshot_count: r.screenshot_count, notes: r.notes || [] })) });
+  res.json({
+    requests: rows.map((r) => ({
+      ...publicRequest(r, []),
+      screenshots: undefined,
+      screenshot_count: r.screenshot_count,
+      notes: r.notes || [],
+      reply_count: r.reply_count,
+      unseen_replies: r.unseen_replies,
+      last_reply_at: r.last_reply_at,
+    })),
+  });
 }));
 
 admin.get('/requests/:id', asyncRoute(async (req, res) => {
@@ -548,6 +566,11 @@ admin.get('/requests/:id', asyncRoute(async (req, res) => {
   const { rows: msgs } = await pool.query(
     `SELECT direction, kind, from_addr, to_addr, subject, body, created_at
      FROM messages WHERE request_id = $1 AND kind <> 'admin_alert' ORDER BY created_at`,
+    [full.id]
+  );
+  // Opening a ticket counts as reading its replies — clears the inbox badge.
+  await pool.query(
+    "UPDATE messages SET seen_at = now() WHERE request_id = $1 AND direction = 'inbound' AND seen_at IS NULL",
     [full.id]
   );
   res.json({
