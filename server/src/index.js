@@ -10,7 +10,7 @@ const { imapConfigured, syncInbox } = require('./imap');
 
 const PORT = Number(process.env.PORT || 3000);
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 if (!ADMIN_KEY) {
   console.error('FATAL: ADMIN_KEY is not set — refusing to start without admin authentication');
