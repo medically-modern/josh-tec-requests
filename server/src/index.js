@@ -436,18 +436,23 @@ app.get('/api/review', rateLimit('review', 60, 60000), asyncRoute(async (req, re
             COALESCE(jsonb_array_length(r.video_links), 0)::int AS video_count,
             (r.steps <> '') AS has_steps,
             COALESCE(sc.n, 0)::int AS screenshot_count,
-            COALESCE(mc.n, 0)::int AS message_count
+            COALESCE(mc.n, 0)::int AS message_count,
+            nt.notes
      FROM requests r
      JOIN services s ON s.id = r.service_id
      LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM screenshots GROUP BY request_id) sc ON sc.request_id = r.id
      LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM messages WHERE kind <> 'admin_alert' GROUP BY request_id) mc ON mc.request_id = r.id
+     LEFT JOIN (SELECT request_id,
+                       json_agg(json_build_object('actor', actor, 'detail', detail, 'created_at', created_at)
+                                ORDER BY created_at DESC) AS notes
+                FROM activity WHERE action = 'review_note' GROUP BY request_id) nt ON nt.request_id = r.id
      WHERE r.status IN ('open', 'in_progress')
      ORDER BY (r.type = 'change_request') DESC,
               CASE r.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
               r.created_at`
   );
   res.set('Cache-Control', 'no-store');
-  res.json({ requests: rows, generated_at: new Date().toISOString() });
+  res.json({ requests: rows.map((r) => ({ ...r, notes: r.notes || [] })), generated_at: new Date().toISOString() });
 }));
 
 // Full detail for one ticket on the review sheet: steps, video links,
@@ -463,7 +468,7 @@ app.get('/api/review/:ticket', rateLimit('review_detail', 120, 60000), asyncRout
   const { rows: acts } = await pool.query(
     `SELECT actor, action, detail, created_at FROM activity
      WHERE request_id = $1
-       AND action IN ('created','status_changed','email_sent','email_pending','followup','reply','resolution_note')
+       AND action IN ('created','status_changed','email_sent','email_pending','followup','reply','resolution_note','review_note')
      ORDER BY created_at`,
     [full.id]
   );
@@ -474,6 +479,31 @@ app.get('/api/review/:ticket', rateLimit('review_detail', 120, 60000), asyncRout
   );
   res.set('Cache-Control', 'no-store');
   res.json({ request: full, activity: acts, messages: msgs });
+}));
+
+// Add a collaborative note to a ticket straight from the review sheet. Gated by
+// the same REVIEW_KEY as the rest of the sheet (open link when unset), and
+// recorded as a distinct 'review_note' action so these shared notes never mix
+// with admins' PRIVATE internal notes (action 'note'), which stay hidden from
+// the review sheet. The author's name is captured for attribution.
+app.post('/api/review/:ticket/notes', rateLimit('review_note', 30, 60000), asyncRoute(async (req, res) => {
+  if (REVIEW_KEY && !timingSafeEq(clean(req.query.key, 200), REVIEW_KEY)) {
+    return res.status(401).json({ error: 'This review link is missing or has the wrong access key.' });
+  }
+  const full = await getRequestFull(clean(req.params.ticket, 24).toUpperCase(), true);
+  if (!full) return res.status(404).json({ error: 'Ticket not found.' });
+  const note = clean((req.body || {}).note, 4000);
+  if (!note) return res.status(400).json({ error: 'Note text is required.' });
+  const author = clean((req.body || {}).author, 120) || 'Anonymous';
+  const { rows } = await pool.query(
+    `INSERT INTO activity (request_id, actor, action, detail)
+     VALUES ($1, $2, 'review_note', $3)
+     RETURNING actor, action, detail, created_at`,
+    [full.id, author, note]
+  );
+  await pool.query('UPDATE requests SET updated_at = now() WHERE id = $1', [full.id]);
+  res.set('Cache-Control', 'no-store');
+  res.status(201).json({ note: rows[0] });
 }));
 
 // Ticket tracking for submitters (requires matching ticket + email)

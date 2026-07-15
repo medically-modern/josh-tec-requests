@@ -600,6 +600,8 @@ table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; f
 .sheet-table .col-days { text-align: center; font-weight: 700; white-space: nowrap; }
 .sheet-table tr.sev-critical .col-days { color: var(--red); }
 .sheet-table tr.sev-high .col-days { color: var(--orange); }
+.sheet-table .col-notes { white-space: nowrap; text-align: right; width: 1%; }
+.sheet-table td.col-notes { cursor: default; }
 
 /* Review sheet — expandable ticket detail */
 .sheet-row { cursor: pointer; }
@@ -623,3 +625,13 @@ table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; f
 .dd-msg-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 5px; font-size: 12.5px; }
 .dd-msg-kind { color: var(--muted); background: rgba(255,255,255,.7); border-radius: 999px; padding: 0 8px; font-size: 11px; font-weight: 600; }
 .dd-msg-date { margin-left: auto; color: var(--faint); font-size: 11.5px; white-space: nowrap; }
+
+/* Add-a-note box at the foot of the Activity list in an expanded ticket */
+.dd-note-add { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.dd-note-add .dd-note-name { margin-bottom: 8px; }
+.dd-note-row { display: flex; gap: 8px; align-items: center; }
+.dd-note-row .dd-note-input { flex: 1 1 auto; width: auto; min-width: 0; }
+.dd-note-row .dd-note-save { flex: 0 0 auto; white-space: nowrap; }
+
+/* Name field in the quick add-a-note popover */
+.float-panel .fp-name { margin-bottom: 8px; }
