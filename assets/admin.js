@@ -645,8 +645,23 @@ const ACTION_META = {
   email_sent: { cls: 'tl-email', label: 'Email sent' },
   email_pending: { cls: 'tl-status', label: 'Email pending' },
   note: { cls: 'tl-note', label: 'Note' },
+  review_note: { cls: 'tl-note', label: 'Note (review board)' },
   resolution_note: { cls: 'tl-note', label: 'Resolution note updated' },
+  priority_changed: { cls: 'tl-status', label: 'Priority changed' },
+  category_changed: { cls: 'tl-status', label: 'Category changed' },
+  followup: { cls: 'tl-email', label: 'Follow-up sent' },
+  reply: { cls: 'tl-email', label: 'Reply received' },
 };
+
+// Render note/activity file attachments (images as thumbnails, docs as cards).
+function adminAttachments(list) {
+  if (!list || !list.length) return '';
+  const imgs = list.filter(isImageAttachment);
+  const docs = list.filter((s) => !isImageAttachment(s));
+  return '<div class="tl-attach">' +
+    imgs.map((s) => `<a href="${esc(screenshotUrl(s))}" target="_blank" rel="noopener" class="tl-shot" title="${esc(s.filename)}"><img src="${esc(screenshotUrl(s))}" alt="" loading="lazy"></a>`).join('') +
+    docs.map(docCard).join('') + '</div>';
+}
 
 function renderDetail(data) {
   const r = data.request;
@@ -682,7 +697,19 @@ function renderDetail(data) {
       ${r.status === 'completed' ? notifyBadge(r) : ''}</div>
       <h3 class="mt1" style="font-size:17px">${esc(r.title)}</h3>
       <div class="small muted">From <strong>${esc(r.submitter_name)}</strong> · <a href="mailto:${esc(r.submitter_email)}">${esc(r.submitter_email)}</a></div>
+      ${r.patient_name ? `<div class="small muted">&#129492; Patient: <strong>${esc(r.patient_name)}</strong></div>` : ''}
       ${r.completed_at ? `<div class="small muted">Completed ${esc(fmtDate(r.completed_at))}</div>` : ''}
+      <div class="small muted mt1 inline-edits">Priority:
+        <select id="dPrioritySel" class="folder-sel">
+          ${['critical', 'high', 'medium', 'low'].map((s) => `<option value="${s}" ${r.severity === s ? 'selected' : ''}>${SEV_LABEL[s]}</option>`).join('')}
+        </select>
+        &nbsp;Category:
+        <select id="dCategorySel" class="folder-sel">
+          <option value="" ${!r.category ? 'selected' : ''}>Unassigned</option>
+          <option value="tec_implementation" ${r.category === 'tec_implementation' ? 'selected' : ''}>Tec Implementation</option>
+          <option value="ops_review" ${r.category === 'ops_review' ? 'selected' : ''}>OPS Review</option>
+        </select>
+      </div>
       ${foldersSupported ? `<div class="small muted mt1">&#128193; Folder:
         <select id="dFolderSel" class="folder-sel">
           <option value="">Inbox (no folder)</option>
@@ -730,9 +757,11 @@ function renderDetail(data) {
       <h4>Internal notes & activity</h4>
       <ul class="tl">${(data.activity || []).map((a) => {
         const meta = ACTION_META[a.action] || { cls: '', label: a.action };
+        const isNote = a.action === 'note' || a.action === 'review_note';
         return `<li class="${meta.cls}">
-          <div class="tl-text"><strong>${esc(meta.label)}</strong>${a.action === 'note' ? '' : a.detail ? ` — ${esc(a.detail)}` : ''}</div>
-          ${a.action === 'note' ? `<div class="tl-note-body">${esc(a.detail)}</div>` : ''}
+          <div class="tl-text"><strong>${esc(meta.label)}</strong>${isNote ? '' : a.detail ? ` — ${esc(a.detail)}` : ''}</div>
+          ${isNote && a.detail ? `<div class="tl-note-body">${esc(a.detail)}</div>` : ''}
+          ${adminAttachments(a.attachments)}
           <div class="tl-date">${esc(a.actor)} · ${esc(fmtDate(a.created_at))}</div>
         </li>`;
       }).join('')}</ul>
@@ -744,6 +773,25 @@ function renderDetail(data) {
 
   // Wire actions
   $$('#drawerBody [data-act]').forEach((b) => b.addEventListener('click', () => handleAction(b.dataset.act, r)));
+  // Inline priority + category (mirror the review board; changes sync everywhere)
+  const prioSel = $('#dPrioritySel');
+  if (prioSel) prioSel.addEventListener('change', async () => {
+    try {
+      await adminApi(`/api/admin/requests/${r.id}`, { method: 'PATCH', body: { severity: prioSel.value } });
+      toast(`Priority set to ${SEV_LABEL[prioSel.value]}`, 'ok');
+      await refreshAll(true);
+      loadDetail(r.id);
+    } catch (err) { toast(err.message, 'err'); }
+  });
+  const catSel = $('#dCategorySel');
+  if (catSel) catSel.addEventListener('change', async () => {
+    try {
+      await adminApi(`/api/admin/requests/${r.id}`, { method: 'PATCH', body: { category: catSel.value || null } });
+      toast('Category updated', 'ok');
+      await refreshAll(true);
+      loadDetail(r.id);
+    } catch (err) { toast(err.message, 'err'); }
+  });
   const folderSel = $('#dFolderSel');
   if (folderSel) {
     folderSel.addEventListener('change', async () => {

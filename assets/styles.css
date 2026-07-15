@@ -568,7 +568,7 @@ footer.site-foot a { color: var(--muted); }
 
 .sheet { background: var(--card); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
 .sheet-scroll { overflow-x: auto; max-height: calc(100vh - 210px); overflow-y: auto; }
-table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; min-width: 1080px; }
+table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; min-width: 1320px; }
 .sheet-table th, .sheet-table td { border-right: 1px solid #dde4ea; border-bottom: 1px solid #dde4ea; padding: 8px 10px; text-align: left; vertical-align: top; }
 .sheet-table th:last-child, .sheet-table td:last-child { border-right: none; }
 .sheet-table thead th {
@@ -635,3 +635,61 @@ table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; f
 
 /* Name field in the quick add-a-note popover */
 .float-panel .fp-name { margin-bottom: 8px; }
+
+/* ---- Change-request board: tabs, inline editors, drag, note attachments ---- */
+.board-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }
+.board-tab {
+  border: 1px solid var(--border-strong); background: #fff; color: var(--muted);
+  border-radius: 999px; padding: 7px 14px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.board-tab:hover { border-color: var(--accent); color: var(--accent-dark); }
+.board-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.board-tab .tab-count {
+  display: inline-block; min-width: 20px; text-align: center; margin-left: 4px; padding: 0 6px;
+  border-radius: 999px; background: rgba(0, 0, 0, .08); font-size: 12px;
+}
+.board-tab.active .tab-count { background: rgba(255, 255, 255, .25); }
+.board-hint { margin: 0 0 12px; }
+.grip-inline { letter-spacing: -2px; font-weight: 700; color: var(--faint); }
+
+/* Drag handle + reorder cues */
+.sheet-table .col-drag { width: 26px; text-align: center; color: var(--faint); cursor: grab; letter-spacing: -3px; user-select: none; }
+.sheet-table td.col-drag:active { cursor: grabbing; }
+.sheet-row.dragging { opacity: .45; }
+.sheet-table tr.drop-before td { box-shadow: inset 0 3px 0 -1px var(--accent); }
+.sheet-table tr.drop-after td { box-shadow: inset 0 -3px 0 -1px var(--accent); }
+
+/* Inline priority + category editors */
+.sheet-table .col-patient, .sheet-table .col-cat { white-space: nowrap; }
+.cell-select {
+  width: 100%; min-width: 96px; padding: 5px 6px; border-radius: 7px;
+  border: 1px solid var(--border-strong); background: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.cell-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(14, 116, 144, .15); }
+.sev-edit.sev-critical { color: var(--red); border-color: #fecaca; background: var(--red-soft); }
+.sev-edit.sev-high { color: var(--orange); border-color: #fed7aa; background: #fff7ed; }
+.sev-edit.sev-medium { color: #a16207; border-color: #fde68a; background: #fefce8; }
+.sev-edit.sev-low { color: var(--slate); border-color: #e2e8f0; background: #f8fafc; }
+.sheet-table .col-cat .cat-edit { min-width: 150px; }
+.cat-edit.cat-tec_implementation { color: var(--indigo); border-color: #c7d2fe; background: #eef2ff; }
+.cat-edit.cat-ops_review { color: var(--accent-dark); border-color: #bae6fd; background: var(--accent-soft); }
+
+/* Ticket-detail meta chips */
+.dd-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.dd-chip { background: #fff; border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; font-size: 12.5px; color: var(--muted); }
+.dd-chip strong { color: var(--text); }
+
+/* Note / activity attachments in the timeline */
+.tl-attach { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tl-shot { display: block; width: 78px; height: 78px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.tl-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tl-attach .doc-card { margin: 0; }
+
+/* File pickers in the note popover + detail note box */
+.fp-files-label, .dd-note-files-label {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+  font-size: 12.5px; font-weight: 600; color: var(--accent-dark); cursor: pointer;
+}
+.fp-files, .dd-note-files { display: block; font-size: 12px; max-width: 100%; margin-top: 4px; }
+.fp-picked, .dd-note-picked { margin-top: 6px; overflow-wrap: anywhere; }

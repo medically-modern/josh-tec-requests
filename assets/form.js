@@ -277,6 +277,7 @@ $('#requestForm').addEventListener('submit', (e) => {
   fd.append('video_links', JSON.stringify(links));
   fd.append('submitter_name', $('#name').value.trim());
   fd.append('submitter_email', `${$('#email').value.trim()}@medicallymodern.com`.toLowerCase());
+  fd.append('patient_name', $('#patientName').value.trim());
   files.forEach((item) => fd.append('screenshots', item.file, item.file.name));
 
   submitWithProgress(fd);
@@ -350,6 +351,7 @@ function showSuccess(data) {
     ['Type', TYPE_LABEL[r.type] || r.type],
     ['Severity', SEV_LABEL[r.severity] || r.severity],
     ['Summary', r.title],
+    ...(r.patient_name ? [['Patient', r.patient_name]] : []),
     ['Submitted by', `${r.submitter_name} (${r.submitter_email})`],
     ['Video links', (r.video_links && r.video_links.length) ? r.video_links.join('\n') : 'None'],
     ['Attachments', r.screenshots.length ? `${r.screenshots.length} file(s) — verified below` : 'None'],

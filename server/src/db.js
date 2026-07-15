@@ -116,6 +116,22 @@ CREATE TABLE IF NOT EXISTS folders (
 
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES folders(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_requests_folder ON requests (folder_id);
+
+-- Patient this request relates to (optional; medical context).
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS patient_name TEXT NOT NULL DEFAULT '';
+
+-- Review-board organization: a workstream category (Tec Implementation / OPS
+-- Review) and a manual drag-to-order position. Both are validated in the app.
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS category TEXT;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS board_position DOUBLE PRECISION;
+CREATE INDEX IF NOT EXISTS idx_requests_board ON requests (board_position);
+
+-- Attachments can belong to the original submission OR to an internal note /
+-- activity entry. 'source' keeps the two apart; 'activity_id' links a note's
+-- files to that activity row (cascades when the activity is removed).
+ALTER TABLE screenshots ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'submission';
+ALTER TABLE screenshots ADD COLUMN IF NOT EXISTS activity_id BIGINT REFERENCES activity(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_screenshots_activity ON screenshots (activity_id);
 `;
 
 // [name, description, sort_order]

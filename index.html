@@ -134,6 +134,10 @@
         <textarea id="description" maxlength="8000" placeholder="Describe what's happening and what you expected instead…"></textarea>
         <div class="err-msg">Please add a little more detail (at least 10 characters).</div>
       </div>
+      <div class="field" id="f-patient">
+        <label for="patientName">Patient name <span class="sublabel">(optional — if this request is about a specific patient)</span></label>
+        <input type="text" id="patientName" maxlength="160" placeholder="e.g. Jane Doe" autocomplete="off">
+      </div>
       <div class="field hidden" id="f-steps">
         <label for="steps">Steps to reproduce <span class="sublabel">(optional, but very helpful)</span></label>
         <textarea id="steps" maxlength="8000" placeholder="1. Go to…&#10;2. Click…&#10;3. See error…"></textarea>

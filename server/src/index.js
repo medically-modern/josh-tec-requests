@@ -138,11 +138,40 @@ function sniffImage(buf) {
   return null;
 }
 
+// Verify every upload before storing: anything claiming to be a previewable
+// image must really be one (magic bytes), and documents must match their
+// extension's signature where the format has one. Sets f.verifiedMime on each
+// accepted file; returns an error string for the first bad file, else null.
+function verifyUploads(files) {
+  for (const f of files) {
+    const ext = fileExt(f.originalname);
+    const claimsImage = IMAGE_MIME.has(f.mimetype) || IMAGE_MIME.has(DOC_TYPES.get(ext) || '');
+    if (claimsImage) {
+      const sniffed = sniffImage(f.buffer);
+      if (!sniffed) return `"${f.originalname}" does not look like a valid image file.`;
+      f.verifiedMime = sniffed;
+      continue;
+    }
+    const mapped = DOC_TYPES.get(ext);
+    if (!mapped) return `"${f.originalname}": ${TYPE_ERROR}`;
+    if (mapped === 'application/pdf' && f.buffer.slice(0, 5).toString('ascii') !== '%PDF-') {
+      return `"${f.originalname}" does not look like a valid PDF file.`;
+    }
+    if (['docx', 'xlsx', 'pptx', 'zip'].includes(ext) && !(f.buffer[0] === 0x50 && f.buffer[1] === 0x4b)) {
+      return `"${f.originalname}" does not look like a valid .${ext} file.`;
+    }
+    f.verifiedMime = mapped;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 const TYPES = new Set(['issue', 'change_request']);
 const SEVERITIES = new Set(['critical', 'high', 'medium', 'low']);
 const STATUSES = new Set(['open', 'in_progress', 'completed', 'declined']);
+const CATEGORIES = new Set(['tec_implementation', 'ops_review']);
+const CATEGORY_LABEL = { tec_implementation: 'Tec Implementation', ops_review: 'OPS Review' };
 const EMAIL_RE = /^[a-z0-9._%+-]+@medicallymodern\.com$/i;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (s) => UUID_RE.test(String(s || ''));
@@ -188,12 +217,15 @@ function publicRequest(row, screenshots) {
     folder_id: row.folder_id || null,
     type: row.type,
     severity: row.severity,
+    category: row.category || null,
+    board_position: row.board_position === null || row.board_position === undefined ? null : Number(row.board_position),
     title: row.title,
     description: row.description,
     steps: row.steps,
     video_links: row.video_links,
     submitter_name: row.submitter_name,
     submitter_email: row.submitter_email,
+    patient_name: row.patient_name || '',
     status: row.status,
     resolution_note: row.resolution_note,
     created_at: row.created_at,
@@ -213,8 +245,10 @@ async function getRequestFull(id, byTicket = false) {
     [id]
   );
   if (!rows.length) return null;
+  // Only the ORIGINAL submission attachments — note/activity attachments are
+  // tracked separately (source = 'note') and surface in the activity timeline.
   const shots = await pool.query(
-    'SELECT id, filename, mime, size_bytes FROM screenshots WHERE request_id = $1 ORDER BY created_at',
+    "SELECT id, filename, mime, size_bytes FROM screenshots WHERE request_id = $1 AND source = 'submission' ORDER BY created_at",
     [rows[0].id]
   );
   return publicRequest(rows[0], shots.rows);
@@ -225,6 +259,22 @@ async function logActivity(requestId, actor, action, detail = '') {
     'INSERT INTO activity (request_id, actor, action, detail) VALUES ($1, $2, $3, $4)',
     [requestId, actor, action, detail]
   );
+}
+
+// Attach any note/activity file uploads (source = 'note') to their activity
+// rows in place, keyed by activity_id. Every row gets an `attachments` array.
+async function attachNoteFiles(requestId, acts) {
+  if (!acts.length) return;
+  const { rows } = await pool.query(
+    "SELECT id, filename, mime, size_bytes, activity_id FROM screenshots WHERE request_id = $1 AND source = 'note' ORDER BY created_at",
+    [requestId]
+  );
+  const byAct = new Map();
+  for (const r of rows) {
+    if (!byAct.has(r.activity_id)) byAct.set(r.activity_id, []);
+    byAct.get(r.activity_id).push(screenshotMeta(r));
+  }
+  acts.forEach((a) => { a.attachments = byAct.get(a.id) || []; });
 }
 
 // In-Reply-To / References for the next email in a ticket's thread, so Gmail
@@ -296,6 +346,7 @@ app.post(
     const steps = clean(b.steps, 8000);
     const submitterName = clean(b.submitter_name, 120);
     const submitterEmail = clean(b.submitter_email, 160).toLowerCase();
+    const patientName = clean(b.patient_name, 160);
     const videoLinks = parseVideoLinks(b.video_links);
 
     const errors = [];
@@ -312,31 +363,9 @@ app.post(
     const svc = await pool.query('SELECT id, name FROM services WHERE id = $1 AND active = TRUE', [serviceId]);
     if (!svc.rows.length) return res.status(400).json({ error: 'That service was not found — refresh the page and pick again.' });
 
-    // Verify every upload before storing: anything claiming to be a
-    // previewable image must really be one (magic bytes), and documents must
-    // match their extension's signature where the format has one.
     const files = req.files || [];
-    for (const f of files) {
-      const ext = fileExt(f.originalname);
-      const claimsImage = IMAGE_MIME.has(f.mimetype) || IMAGE_MIME.has(DOC_TYPES.get(ext) || '');
-      if (claimsImage) {
-        const sniffed = sniffImage(f.buffer);
-        if (!sniffed) {
-          return res.status(400).json({ error: `"${f.originalname}" does not look like a valid image file.` });
-        }
-        f.verifiedMime = sniffed;
-        continue;
-      }
-      const mapped = DOC_TYPES.get(ext);
-      if (!mapped) return res.status(400).json({ error: `"${f.originalname}": ${TYPE_ERROR}` });
-      if (mapped === 'application/pdf' && f.buffer.slice(0, 5).toString('ascii') !== '%PDF-') {
-        return res.status(400).json({ error: `"${f.originalname}" does not look like a valid PDF file.` });
-      }
-      if (['docx', 'xlsx', 'pptx', 'zip'].includes(ext) && !(f.buffer[0] === 0x50 && f.buffer[1] === 0x4b)) {
-        return res.status(400).json({ error: `"${f.originalname}" does not look like a valid .${ext} file.` });
-      }
-      f.verifiedMime = mapped;
-    }
+    const verr = verifyUploads(files);
+    if (verr) return res.status(400).json({ error: verr });
 
     const client = await pool.connect();
     let created;
@@ -345,15 +374,15 @@ app.post(
       const ticket = await nextTicket(client);
       const ins = await client.query(
         `INSERT INTO requests
-           (ticket, service_id, type, severity, title, description, steps, video_links, submitter_name, submitter_email)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           (ticket, service_id, type, severity, title, description, steps, video_links, submitter_name, submitter_email, patient_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          RETURNING *`,
-        [ticket, serviceId, type, severity, title, description, steps, JSON.stringify(videoLinks), submitterName, submitterEmail]
+        [ticket, serviceId, type, severity, title, description, steps, JSON.stringify(videoLinks), submitterName, submitterEmail, patientName]
       );
       created = ins.rows[0];
       for (const f of files) {
         await client.query(
-          'INSERT INTO screenshots (request_id, filename, mime, size_bytes, data) VALUES ($1,$2,$3,$4,$5)',
+          "INSERT INTO screenshots (request_id, filename, mime, size_bytes, data, source) VALUES ($1,$2,$3,$4,$5,'submission')",
           [created.id, clean(f.originalname, 200) || 'screenshot.png', f.verifiedMime, f.buffer.length, f.buffer]
         );
       }
@@ -432,7 +461,8 @@ app.get('/api/review', rateLimit('review', 60, 60000), asyncRoute(async (req, re
   }
   const { rows } = await pool.query(
     `SELECT r.ticket, r.type, r.severity, r.status, r.title, r.description,
-            r.submitter_name, r.created_at, r.updated_at, s.name AS service_name,
+            r.submitter_name, r.patient_name, r.category, r.board_position,
+            r.created_at, r.updated_at, s.name AS service_name,
             COALESCE(jsonb_array_length(r.video_links), 0)::int AS video_count,
             (r.steps <> '') AS has_steps,
             COALESCE(sc.n, 0)::int AS screenshot_count,
@@ -440,14 +470,14 @@ app.get('/api/review', rateLimit('review', 60, 60000), asyncRoute(async (req, re
             nt.notes
      FROM requests r
      JOIN services s ON s.id = r.service_id
-     LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM screenshots GROUP BY request_id) sc ON sc.request_id = r.id
+     LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM screenshots WHERE source = 'submission' GROUP BY request_id) sc ON sc.request_id = r.id
      LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM messages WHERE kind <> 'admin_alert' GROUP BY request_id) mc ON mc.request_id = r.id
      LEFT JOIN (SELECT request_id,
                        json_agg(json_build_object('actor', actor, 'detail', detail, 'created_at', created_at)
                                 ORDER BY created_at DESC) AS notes
                 FROM activity WHERE action = 'review_note' GROUP BY request_id) nt ON nt.request_id = r.id
-     WHERE r.status IN ('open', 'in_progress')
-     ORDER BY (r.type = 'change_request') DESC,
+     WHERE r.type = 'change_request' AND r.status IN ('open', 'in_progress')
+     ORDER BY r.board_position ASC NULLS LAST,
               CASE r.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
               r.created_at`
   );
@@ -466,12 +496,13 @@ app.get('/api/review/:ticket', rateLimit('review_detail', 120, 60000), asyncRout
   if (!full) return res.status(404).json({ error: 'Ticket not found.' });
   delete full.submitter_email;
   const { rows: acts } = await pool.query(
-    `SELECT actor, action, detail, created_at FROM activity
+    `SELECT id, actor, action, detail, created_at FROM activity
      WHERE request_id = $1
-       AND action IN ('created','status_changed','email_sent','email_pending','followup','reply','resolution_note','review_note')
+       AND action IN ('created','status_changed','email_sent','email_pending','followup','reply','resolution_note','review_note','priority_changed','category_changed')
      ORDER BY created_at`,
     [full.id]
   );
+  await attachNoteFiles(full.id, acts);
   const { rows: msgs } = await pool.query(
     `SELECT direction, kind, subject, body, created_at
      FROM messages WHERE request_id = $1 AND kind <> 'admin_alert' ORDER BY created_at`,
@@ -486,24 +517,141 @@ app.get('/api/review/:ticket', rateLimit('review_detail', 120, 60000), asyncRout
 // recorded as a distinct 'review_note' action so these shared notes never mix
 // with admins' PRIVATE internal notes (action 'note'), which stay hidden from
 // the review sheet. The author's name is captured for attribution.
-app.post('/api/review/:ticket/notes', rateLimit('review_note', 30, 60000), asyncRoute(async (req, res) => {
+app.post(
+  '/api/review/:ticket/notes',
+  rateLimit('review_note', 30, 60000),
+  (req, res, next) => {
+    upload.array('attachments', 6)(req, res, (err) => {
+      if (err) {
+        const msg = err.code === 'LIMIT_FILE_SIZE'
+          ? 'Each file must be 8 MB or smaller'
+          : err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE'
+            ? 'You can attach up to 6 files'
+            : err.message || 'Upload failed';
+        return res.status(400).json({ error: msg });
+      }
+      next();
+    });
+  },
+  asyncRoute(async (req, res) => {
+    if (REVIEW_KEY && !timingSafeEq(clean(req.query.key, 200), REVIEW_KEY)) {
+      return res.status(401).json({ error: 'This review link is missing or has the wrong access key.' });
+    }
+    const full = await getRequestFull(clean(req.params.ticket, 24).toUpperCase(), true);
+    if (!full) return res.status(404).json({ error: 'Ticket not found.' });
+    const note = clean((req.body || {}).note, 4000);
+    const files = req.files || [];
+    if (!note && !files.length) return res.status(400).json({ error: 'Add a note or attach a document.' });
+    const verr = verifyUploads(files);
+    if (verr) return res.status(400).json({ error: verr });
+    const author = clean((req.body || {}).author, 120) || 'Anonymous';
+
+    const client = await pool.connect();
+    let noteRow;
+    try {
+      await client.query('BEGIN');
+      const ins = await client.query(
+        `INSERT INTO activity (request_id, actor, action, detail)
+         VALUES ($1, $2, 'review_note', $3)
+         RETURNING id, actor, action, detail, created_at`,
+        [full.id, author, note]
+      );
+      noteRow = ins.rows[0];
+      for (const f of files) {
+        await client.query(
+          `INSERT INTO screenshots (request_id, filename, mime, size_bytes, data, source, activity_id)
+           VALUES ($1, $2, $3, $4, $5, 'note', $6)`,
+          [full.id, clean(f.originalname, 200) || 'file', f.verifiedMime, f.buffer.length, f.buffer, noteRow.id]
+        );
+      }
+      await client.query('UPDATE requests SET updated_at = now() WHERE id = $1', [full.id]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+    const shots = await pool.query(
+      'SELECT id, filename, mime, size_bytes FROM screenshots WHERE activity_id = $1 ORDER BY created_at',
+      [noteRow.id]
+    );
+    noteRow.attachments = shots.rows.map(screenshotMeta);
+    res.set('Cache-Control', 'no-store');
+    res.status(201).json({ note: noteRow });
+  })
+);
+
+// Edit a ticket from the review sheet: priority (severity), workstream
+// category, and manual board position. These write the canonical record, so
+// the change is reflected everywhere (admin dashboard, tracker, etc.).
+app.patch('/api/review/:ticket', rateLimit('review_edit', 120, 60000), asyncRoute(async (req, res) => {
   if (REVIEW_KEY && !timingSafeEq(clean(req.query.key, 200), REVIEW_KEY)) {
     return res.status(401).json({ error: 'This review link is missing or has the wrong access key.' });
   }
   const full = await getRequestFull(clean(req.params.ticket, 24).toUpperCase(), true);
   if (!full) return res.status(404).json({ error: 'Ticket not found.' });
-  const note = clean((req.body || {}).note, 4000);
-  if (!note) return res.status(400).json({ error: 'Note text is required.' });
-  const author = clean((req.body || {}).author, 120) || 'Anonymous';
-  const { rows } = await pool.query(
-    `INSERT INTO activity (request_id, actor, action, detail)
-     VALUES ($1, $2, 'review_note', $3)
-     RETURNING actor, action, detail, created_at`,
-    [full.id, author, note]
-  );
-  await pool.query('UPDATE requests SET updated_at = now() WHERE id = $1', [full.id]);
+  const b = req.body || {};
+  const actor = clean(b.actor, 120) || 'Review';
+  const updates = [];
+  const params = [];
+  let sevChange = null;
+  let catChange; // undefined = unchanged
+
+  if (b.severity !== undefined) {
+    const sev = clean(b.severity, 20);
+    if (!SEVERITIES.has(sev)) return res.status(400).json({ error: 'Invalid priority.' });
+    if (sev !== full.severity) { params.push(sev); updates.push(`severity = $${params.length}`); sevChange = sev; }
+  }
+  if (b.category !== undefined) {
+    const cat = b.category === null || b.category === '' ? null : clean(b.category, 40);
+    if (cat !== null && !CATEGORIES.has(cat)) return res.status(400).json({ error: 'Invalid category.' });
+    if (cat !== (full.category || null)) { params.push(cat); updates.push(`category = $${params.length}`); catChange = cat; }
+  }
+  if (b.board_position !== undefined) {
+    const pos = Number(b.board_position);
+    if (!Number.isFinite(pos)) return res.status(400).json({ error: 'Invalid position.' });
+    params.push(pos); updates.push(`board_position = $${params.length}`);
+  }
+  if (!updates.length) return res.status(400).json({ error: 'Nothing to update.' });
+
+  updates.push('updated_at = now()');
+  params.push(full.id);
+  await pool.query(`UPDATE requests SET ${updates.join(', ')} WHERE id = $${params.length}`, params);
+
+  if (sevChange) await logActivity(full.id, actor, 'priority_changed', `Priority changed from ${full.severity} to ${sevChange}`);
+  if (catChange !== undefined) {
+    await logActivity(full.id, actor, 'category_changed', `Category set to ${catChange ? CATEGORY_LABEL[catChange] : 'unassigned'}`);
+  }
+
+  const updated = await getRequestFull(full.id);
   res.set('Cache-Control', 'no-store');
-  res.status(201).json({ note: rows[0] });
+  res.json({ ticket: updated.ticket, severity: updated.severity, category: updated.category, board_position: updated.board_position });
+}));
+
+// Persist the manual drag order of the review board: board_position = index.
+app.post('/api/review/order', rateLimit('review_order', 60, 60000), asyncRoute(async (req, res) => {
+  if (REVIEW_KEY && !timingSafeEq(clean(req.query.key, 200), REVIEW_KEY)) {
+    return res.status(401).json({ error: 'This review link is missing or has the wrong access key.' });
+  }
+  const raw = Array.isArray((req.body || {}).order) ? req.body.order : null;
+  if (!raw) return res.status(400).json({ error: 'An order array is required.' });
+  const tickets = raw.map((t) => clean(t, 24).toUpperCase()).filter(Boolean).slice(0, 1000);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (let i = 0; i < tickets.length; i++) {
+      await client.query('UPDATE requests SET board_position = $1, updated_at = now() WHERE ticket = $2', [i, tickets[i]]);
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, count: tickets.length });
 }));
 
 // Ticket tracking for submitters (requires matching ticket + email)
@@ -558,7 +706,7 @@ admin.get('/requests', asyncRoute(async (req, res) => {
             rp.last_reply_at
      FROM requests r
      JOIN services s ON s.id = r.service_id
-     LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM screenshots GROUP BY request_id) sc ON sc.request_id = r.id
+     LEFT JOIN (SELECT request_id, COUNT(*) AS n FROM screenshots WHERE source = 'submission' GROUP BY request_id) sc ON sc.request_id = r.id
      LEFT JOIN (SELECT request_id,
                        json_agg(json_build_object('actor', actor, 'detail', detail, 'created_at', created_at)
                                 ORDER BY created_at DESC) AS notes
@@ -590,9 +738,10 @@ admin.get('/requests/:id', asyncRoute(async (req, res) => {
   const full = await getRequestFull(clean(req.params.id, 60));
   if (!full) return res.status(404).json({ error: 'Not found' });
   const { rows: acts } = await pool.query(
-    'SELECT actor, action, detail, created_at FROM activity WHERE request_id = $1 ORDER BY created_at',
+    'SELECT id, actor, action, detail, created_at FROM activity WHERE request_id = $1 ORDER BY created_at',
     [full.id]
   );
+  await attachNoteFiles(full.id, acts);
   const { rows: msgs } = await pool.query(
     `SELECT direction, kind, from_addr, to_addr, subject, body, created_at
      FROM messages WHERE request_id = $1 AND kind <> 'admin_alert' ORDER BY created_at`,
@@ -657,6 +806,19 @@ admin.patch('/requests/:id', asyncRoute(async (req, res) => {
     params.push(clean(b.resolution_note, 8000));
     updates.push(`resolution_note = $${params.length}`);
   }
+  // Priority + workstream category (mirror the review board; keep everything in sync).
+  let sevChange = null;
+  let catChange; // undefined = unchanged
+  if (b.severity !== undefined) {
+    const sev = clean(b.severity, 20);
+    if (!SEVERITIES.has(sev)) return res.status(400).json({ error: 'Invalid priority' });
+    if (sev !== existing.severity) { params.push(sev); updates.push(`severity = $${params.length}`); sevChange = sev; }
+  }
+  if (b.category !== undefined) {
+    const cat = b.category === null || b.category === '' ? null : clean(b.category, 40);
+    if (cat !== null && !CATEGORIES.has(cat)) return res.status(400).json({ error: 'Invalid category' });
+    if (cat !== (existing.category || null)) { params.push(cat); updates.push(`category = $${params.length}`); catChange = cat; }
+  }
   // Personal organization: file the ticket into a folder (null = back to inbox).
   if (b.folder_id !== undefined) {
     const folderId = b.folder_id === null || b.folder_id === '' ? null : clean(b.folder_id, 60);
@@ -688,6 +850,10 @@ admin.patch('/requests/:id', asyncRoute(async (req, res) => {
   }
   if (b.resolution_note !== undefined && clean(b.resolution_note, 8000) !== existing.resolution_note) {
     await logActivity(id, 'admin', 'resolution_note', 'Resolution note updated');
+  }
+  if (sevChange) await logActivity(id, 'admin', 'priority_changed', `Priority changed from ${existing.severity} to ${sevChange}`);
+  if (catChange !== undefined) {
+    await logActivity(id, 'admin', 'category_changed', `Category set to ${catChange ? CATEGORY_LABEL[catChange] : 'unassigned'}`);
   }
 
   // Completion email
