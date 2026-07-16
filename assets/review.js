@@ -134,10 +134,14 @@ function resortAndRerender() {
   renderRows();
 }
 
+function renderCounts() {
+  const n = lastData ? lastData.requests.length : 0;
+  $('#counts').innerHTML = `<span class="chip chip-change">${n} open change request${n === 1 ? '' : 's'}</span>`;
+}
+
 function render(data) {
   lastData = { requests: sortRequests((data.requests || []).slice()), generated_at: data.generated_at };
-  const n = lastData.requests.length;
-  $('#counts').innerHTML = `<span class="chip chip-change">${n} open change request${n === 1 ? '' : 's'}</span>`;
+  renderCounts();
   $('#updatedAt').textContent = `Updated ${fmtDate(data.generated_at || new Date())}`;
   renderTabs();
   renderRows();
@@ -273,6 +277,7 @@ const ACT_LABEL = {
   review_note: 'Note',
   priority_changed: 'Priority changed',
   category_changed: 'Category changed',
+  type_changed: 'Type changed',
 };
 
 function detailSection(title, inner) {
@@ -296,6 +301,9 @@ function detailHtml(data) {
     ${r.patient_name ? `<span class="dd-chip">&#129492; Patient: <strong>${esc(r.patient_name)}</strong></span>` : ''}
     <span class="dd-chip">Category: <strong>${r.category ? esc(CATEGORY_LABEL[r.category]) : 'Unassigned'}</strong></span>
     <span class="dd-chip">Priority: <strong>${esc(SEV_LABEL[r.severity] || r.severity)}</strong></span>
+    <span class="dd-chip">Type: <strong>${esc(TYPE_LABEL[r.type] || r.type)}</strong>
+      ${r.type === 'change_request' ? '<button type="button" class="btn btn-sm btn-ghost dd-convert" title="Filed as a change request but really a bug? Reclassify it as an issue.">&#9888; Actually a bug &mdash; convert to Issue</button>' : ''}
+    </span>
   </div><div class="dd-grid">`;
 
   let left = detailSection('Full description', `<div class="dd-pre">${esc(r.description)}</div>`);
@@ -383,7 +391,7 @@ async function toggleDetail(row) {
       detailCache.set(ticket, data);
     }
     tr.firstElementChild.innerHTML = detailHtml(data);
-    wireDetailNoteBox(tr.firstElementChild, ticket);
+    wireDetail(tr.firstElementChild, ticket);
   } catch (err) {
     tr.firstElementChild.innerHTML = `<div class="banner banner-error"><span>&#9888;</span><div>${esc(err.message)}</div></div>`;
   }
@@ -435,7 +443,7 @@ function applyNewNote(ticket, note) {
   const det = rowEl.nextElementSibling;
   if (det && det.classList.contains('sheet-detail') && cached) {
     det.firstElementChild.innerHTML = detailHtml(cached);
-    wireDetailNoteBox(det.firstElementChild, ticket);
+    wireDetail(det.firstElementChild, ticket);
   }
 }
 
@@ -448,6 +456,33 @@ function wireNotesCell(rowEl, r) {
   }
   const add = $('.note-add', rowEl);
   if (add) add.addEventListener('click', (e) => { e.stopPropagation(); openQuickNote(add, r); });
+}
+
+// Wire everything interactive inside an expanded ticket detail.
+function wireDetail(host, ticket) {
+  wireDetailNoteBox(host, ticket);
+  const convert = $('.dd-convert', host);
+  if (convert) convert.addEventListener('click', () => convertToIssue(ticket, convert));
+}
+
+// A "change request" that's really a bug: reclassify it as an issue. The
+// ticket keeps its number and history but leaves this board (which lists
+// change requests only) and shows up as an Issue in the admin dashboard.
+async function convertToIssue(ticket, btn) {
+  if (!confirm(`Convert ${ticket} to an Issue?\n\nIt keeps its ticket number and history, but moves off this change-request board into the issues queue.`)) return;
+  btn.disabled = true;
+  try {
+    await editTicket(ticket, { type: 'issue' });
+    detailCache.delete(ticket);
+    if (lastData) lastData.requests = lastData.requests.filter((r) => r.ticket !== ticket);
+    renderCounts();
+    renderTabs();
+    renderRows();
+    toast(`${ticket} is now an Issue — it has moved off this board`, 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+    btn.disabled = false;
+  }
 }
 
 // The note box shown at the bottom of the Activity list in an expanded ticket.

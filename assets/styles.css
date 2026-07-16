@@ -679,6 +679,8 @@ table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; f
 .dd-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .dd-chip { background: #fff; border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; font-size: 12.5px; color: var(--muted); }
 .dd-chip strong { color: var(--text); }
+.dd-chip .dd-convert { margin-left: 8px; padding: 2px 9px; font-size: 11.5px; border-radius: 999px; border-color: #fca5a5; color: var(--red); }
+.dd-chip .dd-convert:hover:not(:disabled) { background: var(--red-soft); }
 
 /* Note / activity attachments in the timeline */
 .tl-attach { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }

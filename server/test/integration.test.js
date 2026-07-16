@@ -363,6 +363,33 @@ async function j(res) {
     assert.ok(detail.activity.some((a) => a.action === 'note' && a.detail.includes('timing out')));
   });
 
+  await test('type can be converted (issue ⇄ change request) and is logged', async () => {
+    const res = await fetch(`${API}/api/admin/requests/${created.id}`, {
+      method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'change_request' }),
+    });
+    const data = await j(res);
+    assert.strictEqual(res.status, 200, JSON.stringify(data));
+    assert.strictEqual(data.request.type, 'change_request');
+
+    const bad = await fetch(`${API}/api/admin/requests/${created.id}`, {
+      method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'bogus' }),
+    });
+    assert.strictEqual(bad.status, 400);
+
+    const back = await j(await fetch(`${API}/api/admin/requests/${created.id}`, {
+      method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'issue' }),
+    }));
+    assert.strictEqual(back.request.type, 'issue');
+
+    const detail = await j(await fetch(`${API}/api/admin/requests/${created.id}`, { headers: adminHeaders }));
+    const changes = detail.activity.filter((a) => a.action === 'type_changed');
+    assert.strictEqual(changes.length, 2, 'type changes not logged');
+    assert.ok(changes[0].detail.includes('Issue') && changes[0].detail.includes('Change request'));
+  });
+
   await test('marking completed sets completed_at and returns an email result', async () => {
     const res = await fetch(`${API}/api/admin/requests/${created.id}`, {
       method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' },

@@ -10,7 +10,7 @@ const { imapConfigured, syncInbox } = require('./imap');
 
 const PORT = Number(process.env.PORT || 3000);
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 
 if (!ADMIN_KEY) {
   console.error('FATAL: ADMIN_KEY is not set — refusing to start without admin authentication');
@@ -172,6 +172,7 @@ const SEVERITIES = new Set(['critical', 'high', 'medium', 'low']);
 const STATUSES = new Set(['open', 'in_progress', 'completed', 'declined']);
 const CATEGORIES = new Set(['tec_implementation', 'ops_review']);
 const CATEGORY_LABEL = { tec_implementation: 'Tec Implementation', ops_review: 'OPS Review' };
+const TYPE_LABEL = { issue: 'Issue', change_request: 'Change request' };
 const EMAIL_RE = /^[a-z0-9._%+-]+@medicallymodern\.com$/i;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (s) => UUID_RE.test(String(s || ''));
@@ -498,7 +499,7 @@ app.get('/api/review/:ticket', rateLimit('review_detail', 120, 60000), asyncRout
   const { rows: acts } = await pool.query(
     `SELECT id, actor, action, detail, created_at FROM activity
      WHERE request_id = $1
-       AND action IN ('created','status_changed','email_sent','email_pending','followup','reply','resolution_note','review_note','priority_changed','category_changed')
+       AND action IN ('created','status_changed','email_sent','email_pending','followup','reply','resolution_note','review_note','priority_changed','category_changed','type_changed')
      ORDER BY created_at`,
     [full.id]
   );
@@ -583,8 +584,9 @@ app.post(
 );
 
 // Edit a ticket from the review sheet: priority (severity), workstream
-// category, and manual board position. These write the canonical record, so
-// the change is reflected everywhere (admin dashboard, tracker, etc.).
+// category, type (a "change request" that's really a bug, or vice versa), and
+// manual board position. These write the canonical record, so the change is
+// reflected everywhere (admin dashboard, tracker, etc.).
 app.patch('/api/review/:ticket', rateLimit('review_edit', 120, 60000), asyncRoute(async (req, res) => {
   if (REVIEW_KEY && !timingSafeEq(clean(req.query.key, 200), REVIEW_KEY)) {
     return res.status(401).json({ error: 'This review link is missing or has the wrong access key.' });
@@ -597,7 +599,13 @@ app.patch('/api/review/:ticket', rateLimit('review_edit', 120, 60000), asyncRout
   const params = [];
   let sevChange = null;
   let catChange; // undefined = unchanged
+  let typeChange = null;
 
+  if (b.type !== undefined) {
+    const typ = clean(b.type, 20);
+    if (!TYPES.has(typ)) return res.status(400).json({ error: 'Invalid type.' });
+    if (typ !== full.type) { params.push(typ); updates.push(`type = $${params.length}`); typeChange = typ; }
+  }
   if (b.severity !== undefined) {
     const sev = clean(b.severity, 20);
     if (!SEVERITIES.has(sev)) return res.status(400).json({ error: 'Invalid priority.' });
@@ -623,10 +631,11 @@ app.patch('/api/review/:ticket', rateLimit('review_edit', 120, 60000), asyncRout
   if (catChange !== undefined) {
     await logActivity(full.id, actor, 'category_changed', `Category set to ${catChange ? CATEGORY_LABEL[catChange] : 'unassigned'}`);
   }
+  if (typeChange) await logActivity(full.id, actor, 'type_changed', `Type changed from ${TYPE_LABEL[full.type]} to ${TYPE_LABEL[typeChange]}`);
 
   const updated = await getRequestFull(full.id);
   res.set('Cache-Control', 'no-store');
-  res.json({ ticket: updated.ticket, severity: updated.severity, category: updated.category, board_position: updated.board_position });
+  res.json({ ticket: updated.ticket, type: updated.type, severity: updated.severity, category: updated.category, board_position: updated.board_position });
 }));
 
 // Persist the manual drag order of the review board: board_position = index.
@@ -809,6 +818,12 @@ admin.patch('/requests/:id', asyncRoute(async (req, res) => {
   // Priority + workstream category (mirror the review board; keep everything in sync).
   let sevChange = null;
   let catChange; // undefined = unchanged
+  let typeChange = null;
+  if (b.type !== undefined) {
+    const typ = clean(b.type, 20);
+    if (!TYPES.has(typ)) return res.status(400).json({ error: 'Invalid type' });
+    if (typ !== existing.type) { params.push(typ); updates.push(`type = $${params.length}`); typeChange = typ; }
+  }
   if (b.severity !== undefined) {
     const sev = clean(b.severity, 20);
     if (!SEVERITIES.has(sev)) return res.status(400).json({ error: 'Invalid priority' });
@@ -855,6 +870,7 @@ admin.patch('/requests/:id', asyncRoute(async (req, res) => {
   if (catChange !== undefined) {
     await logActivity(id, 'admin', 'category_changed', `Category set to ${catChange ? CATEGORY_LABEL[catChange] : 'unassigned'}`);
   }
+  if (typeChange) await logActivity(id, 'admin', 'type_changed', `Type changed from ${TYPE_LABEL[existing.type]} to ${TYPE_LABEL[typeChange]}`);
 
   // Completion email
   if (newStatus === 'completed' && existing.status !== 'completed' && b.skip_email !== true) {

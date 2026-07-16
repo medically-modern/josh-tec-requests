@@ -48,6 +48,7 @@ GitHub Pages (repo root) ──HTTPS──▶  Railway "handsome-simplicity" pro
   reply in the *same* email thread (no new chains), and their replies are pulled
   back automatically and shown inline as a chat thread (see Email below)
 - Detail view: screenshots lightbox, video links, activity timeline, internal notes
+- Inline re-classification in the detail view: change a ticket's **type** (Issue ⇄ Change request — submitters mix them up), priority, and category; every change is logged on the ticket's timeline
 - Mark complete → optional resolution note → submitter is emailed (see Email below)
 - CSV export of everything
 

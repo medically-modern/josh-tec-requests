@@ -649,6 +649,7 @@ const ACTION_META = {
   resolution_note: { cls: 'tl-note', label: 'Resolution note updated' },
   priority_changed: { cls: 'tl-status', label: 'Priority changed' },
   category_changed: { cls: 'tl-status', label: 'Category changed' },
+  type_changed: { cls: 'tl-status', label: 'Type changed' },
   followup: { cls: 'tl-email', label: 'Follow-up sent' },
   reply: { cls: 'tl-email', label: 'Reply received' },
 };
@@ -699,7 +700,11 @@ function renderDetail(data) {
       <div class="small muted">From <strong>${esc(r.submitter_name)}</strong> · <a href="mailto:${esc(r.submitter_email)}">${esc(r.submitter_email)}</a></div>
       ${r.patient_name ? `<div class="small muted">&#129492; Patient: <strong>${esc(r.patient_name)}</strong></div>` : ''}
       ${r.completed_at ? `<div class="small muted">Completed ${esc(fmtDate(r.completed_at))}</div>` : ''}
-      <div class="small muted mt1 inline-edits">Priority:
+      <div class="small muted mt1 inline-edits">Type:
+        <select id="dTypeSel" class="folder-sel">
+          ${['issue', 'change_request'].map((t) => `<option value="${t}" ${r.type === t ? 'selected' : ''}>${TYPE_LABEL[t]}</option>`).join('')}
+        </select>
+        &nbsp;Priority:
         <select id="dPrioritySel" class="folder-sel">
           ${['critical', 'high', 'medium', 'low'].map((s) => `<option value="${s}" ${r.severity === s ? 'selected' : ''}>${SEV_LABEL[s]}</option>`).join('')}
         </select>
@@ -773,7 +778,16 @@ function renderDetail(data) {
 
   // Wire actions
   $$('#drawerBody [data-act]').forEach((b) => b.addEventListener('click', () => handleAction(b.dataset.act, r)));
-  // Inline priority + category (mirror the review board; changes sync everywhere)
+  // Inline type + priority + category (mirror the review board; changes sync everywhere)
+  const typeSel = $('#dTypeSel');
+  if (typeSel) typeSel.addEventListener('change', async () => {
+    try {
+      await adminApi(`/api/admin/requests/${r.id}`, { method: 'PATCH', body: { type: typeSel.value } });
+      toast(`${r.ticket} converted to ${TYPE_LABEL[typeSel.value]}`, 'ok');
+      await refreshAll(true);
+      loadDetail(r.id);
+    } catch (err) { toast(err.message, 'err'); typeSel.value = r.type; }
+  });
   const prioSel = $('#dPrioritySel');
   if (prioSel) prioSel.addEventListener('change', async () => {
     try {
