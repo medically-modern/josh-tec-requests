@@ -13,7 +13,7 @@ const assert = require('assert');
 
 const http = require('http');
 
-const REAL_SITE = process.env.SITE_URL || 'https://service-desk-web-production-6b50.up.railway.app';
+const REAL_SITE = process.env.SITE_URL || 'https://medically-modern.github.io/josh-tec-requests';
 const API = process.env.API_URL || 'https://service-desk-api-production-cab4.up.railway.app';
 let SITE = REAL_SITE; // replaced by the local relay URL at startup
 
