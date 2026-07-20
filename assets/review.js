@@ -2,8 +2,10 @@
 /* Company change-request board — spreadsheet style, change requests only.
    Tabs (All / Tec Implementation / OPS Review), inline priority + category
    editing (persisted and synced everywhere), drag-to-reorder (persisted),
-   and collaborative notes with document attachments. Click a row to expand
-   the full ticket: description, attachments, email thread, activity. */
+   and collaborative notes with document attachments. Click a row to open the
+   ticket in a focused full-page view (hash-routed, so review.html#MM-1042
+   links are shareable): description, attachments, email thread, activity,
+   and Prev/Next to work through the queue one ticket at a time. */
 
 $('#logoMark').innerHTML = LOGO_SVG;
 
@@ -74,12 +76,12 @@ function catSelect(r) {
 }
 
 function requestRow(r, idx) {
-  return `<tr class="sheet-row ${idx % 2 ? 'band' : ''} sev-${esc(r.severity)}" data-ticket="${esc(r.ticket)}" draggable="true" title="Drag to reorder · click to expand">
+  return `<tr class="sheet-row ${idx % 2 ? 'band' : ''} sev-${esc(r.severity)}" data-ticket="${esc(r.ticket)}" draggable="true" title="Drag to reorder · click to open">
     <td class="col-drag" title="Drag to reorder">&#8942;&#8942;</td>
-    <td class="col-ticket mono"><span class="caret">&#9656;</span>${esc(r.ticket)}</td>
+    <td class="col-ticket mono">${esc(r.ticket)}</td>
     <td class="col-title">${esc(r.title)}${metaChips(r)}</td>
-    <td class="col-desc">${esc(r.description)}</td>
-    <td class="col-patient">${r.patient_name ? esc(r.patient_name) : '<span class="faint">—</span>'}</td>
+    <td class="col-desc"><div class="desc-clamp">${esc(r.description)}</div></td>
+    <td class="col-patient"${r.patient_name ? ` title="${esc(r.patient_name)}"` : ''}>${r.patient_name ? esc(r.patient_name) : '<span class="faint">—</span>'}</td>
     <td class="col-sev">${sevSelect(r)}</td>
     <td class="col-cat">${catSelect(r)}</td>
     <td class="col-status">${statusBadge(r.status)}</td>
@@ -263,7 +265,9 @@ sheetBody.addEventListener('drop', (e) => {
 sheetBody.addEventListener('dragend', cleanupDrag);
 
 // ---------------------------------------------------------------------------
-// Expandable ticket detail
+// Focus view — clicking a row opens the ticket as its own full page, hiding
+// the board entirely. Hash-routed (review.html#MM-1042) so browser
+// back/forward work and ticket links are shareable.
 
 const MSG_KIND = { receipt: 'Receipt', followup: 'Follow-up', completion: 'Completion notice', reply: 'Reply' };
 const ACT_LABEL = {
@@ -295,16 +299,36 @@ function attachmentsHtml(list) {
     '</div>';
 }
 
-function detailHtml(data) {
-  const r = data.request;
-  let html = `<div class="dd-meta">
-    ${r.patient_name ? `<span class="dd-chip">&#129492; Patient: <strong>${esc(r.patient_name)}</strong></span>` : ''}
-    <span class="dd-chip">Category: <strong>${r.category ? esc(CATEGORY_LABEL[r.category]) : 'Unassigned'}</strong></span>
-    <span class="dd-chip">Priority: <strong>${esc(SEV_LABEL[r.severity] || r.severity)}</strong></span>
-    <span class="dd-chip">Type: <strong>${esc(TYPE_LABEL[r.type] || r.type)}</strong>
+// The header card at the top of the focus view: ticket number, status, title,
+// inline priority/category editors, meta chips, and the convert-to-issue
+// escape hatch. Deep links can reach tickets that aren't on the board
+// (completed ones, or issues) — those get a small explanatory banner.
+function focusHeaderHtml(r) {
+  const onBoard = r.type === 'change_request' && (r.status === 'open' || r.status === 'in_progress');
+  return `<article class="focus-card">
+    <div class="focus-title-row">
+      <span class="focus-ticket">${esc(r.ticket)}</span>
+      ${statusBadge(r.status)}
+      ${r.type === 'issue' ? typeBadge(r.type) : ''}
+      <span class="focus-controls">
+        <label>Priority ${sevSelect(r)}</label>
+        <label>Category ${catSelect(r)}</label>
+      </span>
+    </div>
+    <h2 class="focus-title">${esc(r.title)}</h2>
+    <div class="focus-meta">
+      <span class="dd-chip">Service: <strong>${esc(r.service_name)}</strong></span>
+      <span class="dd-chip">Reported by <strong>${esc(r.submitter_name)}</strong></span>
+      <span class="dd-chip">${esc(fmtDay(r.created_at))} &middot; <strong>${esc(daysOpen(r.created_at))}d open</strong></span>
+      ${r.patient_name ? `<span class="dd-chip">&#129492; Patient: <strong>${esc(r.patient_name)}</strong></span>` : ''}
       ${r.type === 'change_request' ? '<button type="button" class="btn btn-sm btn-ghost dd-convert" title="Filed as a change request but really a bug? Reclassify it as an issue.">&#9888; Actually a bug &mdash; convert to Issue</button>' : ''}
-    </span>
-  </div><div class="dd-grid">`;
+    </div>
+    ${onBoard ? '' : `<div class="banner banner-info small" style="margin:12px 0 0"><span>&#8505;&#65039;</span><div>This ticket is ${esc(TYPE_LABEL[r.type] || r.type)} &middot; ${esc(STATUS_LABEL[r.status] || r.status)}, so it isn't listed on the open change-request board.</div></div>`}
+  </article>`;
+}
+
+function focusHtml(data) {
+  const r = data.request;
 
   let left = detailSection('Full description', `<div class="dd-pre">${esc(r.description)}</div>`);
   if (r.steps) left += detailSection('Steps to reproduce', `<div class="dd-pre">${esc(r.steps)}</div>`);
@@ -324,7 +348,6 @@ function detailHtml(data) {
       (docs.length ? `<div class="${imgs.length ? 'mt1' : ''}">${docs.map(docCard).join('')}</div>` : ''));
   }
   if (r.resolution_note) left += detailSection('Resolution note', `<div class="dd-pre">${esc(r.resolution_note)}</div>`);
-  html += `<div>${left}</div>`;
 
   let right = '';
   const msgs = data.messages || [];
@@ -363,45 +386,103 @@ function detailHtml(data) {
     <div class="dd-note-picked small faint"></div>
   </div>`;
   right += detailSection('Activity &amp; notes', actList + noteBox);
-  html += `<div>${right}</div>`;
 
-  html += '</div>';
-  return html;
+  return focusHeaderHtml(r) + `<div class="dd-grid"><div>${left}</div><div>${right}</div></div>`;
 }
 
 const detailCache = new Map();
+let focusTicket = null; // ticket currently open in the focus view, or null
 
-async function toggleDetail(row) {
-  const open = row.nextElementSibling && row.nextElementSibling.classList.contains('sheet-detail');
-  if (open) {
-    row.nextElementSibling.remove();
-    row.classList.remove('expanded');
-    return;
-  }
-  const ticket = row.dataset.ticket;
-  const tr = document.createElement('tr');
-  tr.className = 'sheet-detail';
-  tr.innerHTML = `<td colspan="${COLSPAN}"><div class="muted small"><span class="spinner dark"></span> Loading ${esc(ticket)}&hellip;</div></td>`;
-  row.after(tr);
-  row.classList.add('expanded');
+function ticketFromHash() {
+  let h = window.location.hash.replace(/^#/, '');
+  try { h = decodeURIComponent(h); } catch { /* keep raw */ }
+  h = h.trim().toUpperCase();
+  return /^MM-\d+$/.test(h) ? h : '';
+}
+
+// Prev/Next walk the board in its current tab + sort order.
+function focusOrder() {
+  return lastData ? visibleRequests() : [];
+}
+
+function renderFocusNav() {
+  const order = focusOrder();
+  const i = order.findIndex((x) => x.ticket === focusTicket);
+  $('#focusNav').classList.toggle('hidden', i < 0);
+  if (i < 0) return;
+  $('#focusPos').textContent = `${i + 1} of ${order.length}`;
+  $('#focusPrev').disabled = i <= 0;
+  $('#focusNext').disabled = i >= order.length - 1;
+}
+
+function stepFocus(delta) {
+  const order = focusOrder();
+  const i = order.findIndex((x) => x.ticket === focusTicket);
+  const next = i < 0 ? null : order[i + delta];
+  if (next) window.location.hash = next.ticket;
+}
+
+async function openFocus(ticket) {
+  focusTicket = ticket;
+  $('#boardView').classList.add('hidden');
+  $('#focusView').classList.remove('hidden');
+  document.title = `${ticket} — Change Requests`;
+  window.scrollTo(0, 0);
+  renderFocusNav();
+  const cached = detailCache.get(ticket);
+  if (cached) return renderFocus(cached);
+  $('#focusBody').innerHTML = `<div class="card center muted"><span class="spinner dark"></span> Loading ${esc(ticket)}&hellip;</div>`;
+  await reloadFocus(ticket, true);
+}
+
+// Fetch (or re-fetch, after an edit changed the activity timeline) the full
+// ticket, then re-render — unless the user has already navigated away.
+async function reloadFocus(ticket, showError) {
   try {
-    let data = detailCache.get(ticket);
-    if (!data) {
-      data = await api(`/api/review/${encodeURIComponent(ticket)}${keyQS}`);
-      detailCache.set(ticket, data);
-    }
-    tr.firstElementChild.innerHTML = detailHtml(data);
-    wireDetail(tr.firstElementChild, ticket);
+    const data = await api(`/api/review/${encodeURIComponent(ticket)}${keyQS}`);
+    detailCache.set(ticket, data);
+    if (focusTicket === ticket) renderFocus(data);
   } catch (err) {
-    tr.firstElementChild.innerHTML = `<div class="banner banner-error"><span>&#9888;</span><div>${esc(err.message)}</div></div>`;
+    if (showError && focusTicket === ticket) {
+      $('#focusBody').innerHTML = `<div class="banner banner-error"><span>&#9888;</span><div>${esc(err.message)}</div></div>`;
+    }
   }
+}
+
+function renderFocus(data) {
+  renderFocusNav();
+  const host = $('#focusBody');
+  host.innerHTML = focusHtml(data);
+  wireFocus(host, data);
+}
+
+function showBoard() {
+  focusTicket = null;
+  $('#focusView').classList.add('hidden');
+  $('#boardView').classList.remove('hidden');
+  document.title = 'Change Requests — Medically Modern Service Desk';
+  // Drop a dangling '#' so the URL stays clean and shareable. (location.hash
+  // is already '' after `location.hash = ''`, but the '#' stays in the URL.)
+  if (window.location.href.includes('#')) history.replaceState(null, '', window.location.pathname + window.location.search);
+  if (lastData) { renderCounts(); renderTabs(); renderRows(); } // reflect edits made in focus
+}
+
+function route() {
+  const t = ticketFromHash();
+  if (t) openFocus(t);
+  else showBoard();
+}
+
+function focusBack() {
+  if (window.location.hash) window.location.hash = ''; // hashchange → showBoard
+  else showBoard();
 }
 
 sheetBody.addEventListener('click', (e) => {
   // Let links, inline controls and the notes column handle their own clicks.
   if (e.target.closest('a, select, button, input, textarea, .col-notes, .col-drag, .col-sev, .col-cat')) return;
   const row = e.target.closest('tr.sheet-row');
-  if (row) toggleDetail(row);
+  if (row) window.location.hash = row.dataset.ticket;
 });
 
 // ---------------------------------------------------------------------------
@@ -426,7 +507,8 @@ async function addNote(ticket, note, author, files) {
 }
 
 // Fold a freshly-created note into the in-memory data and refresh just the
-// affected bits of the DOM — the row's note count, and the open detail (if any).
+// affected bits of the DOM — the row's note count, and the focus view (if the
+// note was added there).
 function applyNewNote(ticket, note) {
   if (!note) return;
   const row = lastData && lastData.requests.find((x) => x.ticket === ticket);
@@ -435,16 +517,11 @@ function applyNewNote(ticket, note) {
   if (cached) { cached.activity = cached.activity || []; cached.activity.push(note); }
 
   const rowEl = $(`#sheetBody tr.sheet-row[data-ticket="${ticket}"]`);
-  if (!rowEl) return;
-  if (row) {
+  if (rowEl && row) {
     const cell = $('.col-notes', rowEl);
     if (cell) { cell.innerHTML = notesCellInner(row); wireNotesCell(rowEl, row); }
   }
-  const det = rowEl.nextElementSibling;
-  if (det && det.classList.contains('sheet-detail') && cached) {
-    det.firstElementChild.innerHTML = detailHtml(cached);
-    wireDetail(det.firstElementChild, ticket);
-  }
+  if (focusTicket === ticket && cached) renderFocus(cached);
 }
 
 function wireNotesCell(rowEl, r) {
@@ -458,31 +535,61 @@ function wireNotesCell(rowEl, r) {
   if (add) add.addEventListener('click', (e) => { e.stopPropagation(); openQuickNote(add, r); });
 }
 
-// Wire everything interactive inside an expanded ticket detail.
-function wireDetail(host, ticket) {
-  wireDetailNoteBox(host, ticket);
-  const convert = $('.dd-convert', host);
-  if (convert) convert.addEventListener('click', () => convertToIssue(ticket, convert));
-}
+// Wire everything interactive inside the focus view: the priority/category
+// editors in the header, the convert-to-issue button, and the add-note box.
+function wireFocus(host, data) {
+  const r = data.request;
+  wireDetailNoteBox(host, r.ticket);
 
-// A "change request" that's really a bug: reclassify it as an issue. The
-// ticket keeps its number and history but leaves this board (which lists
-// change requests only) and shows up as an Issue in the admin dashboard.
-async function convertToIssue(ticket, btn) {
-  if (!confirm(`Convert ${ticket} to an Issue?\n\nIt keeps its ticket number and history, but moves off this change-request board into the issues queue.`)) return;
-  btn.disabled = true;
-  try {
-    await editTicket(ticket, { type: 'issue' });
-    detailCache.delete(ticket);
-    if (lastData) lastData.requests = lastData.requests.filter((r) => r.ticket !== ticket);
-    renderCounts();
-    renderTabs();
-    renderRows();
-    toast(`${ticket} is now an Issue — it has moved off this board`, 'ok');
-  } catch (err) {
-    toast(err.message, 'err');
-    btn.disabled = false;
-  }
+  const syncRow = (apply) => {
+    const row = lastData && lastData.requests.find((x) => x.ticket === r.ticket);
+    if (row) apply(row);
+  };
+
+  const sev = $('.sev-edit', host);
+  if (sev) sev.addEventListener('change', async () => {
+    const val = sev.value;
+    const prev = r.severity;
+    try {
+      await editTicket(r.ticket, { severity: val });
+      toast(`${r.ticket} priority → ${SEV_LABEL[val]}`, 'ok');
+      syncRow((row) => { row.severity = val; if (!hasManualOrder()) sortRequests(lastData.requests); });
+      detailCache.delete(r.ticket);
+      reloadFocus(r.ticket); // restyles the header + picks up the new activity entry
+    } catch (err) { toast(err.message, 'err'); sev.value = prev; }
+  });
+
+  const cat = $('.cat-edit', host);
+  if (cat) cat.addEventListener('change', async () => {
+    const val = cat.value || null;
+    const prev = r.category || '';
+    try {
+      await editTicket(r.ticket, { category: val });
+      toast(`${r.ticket} → ${val ? CATEGORY_LABEL[val] : 'Unassigned'}`, 'ok');
+      syncRow((row) => { row.category = val; });
+      detailCache.delete(r.ticket);
+      reloadFocus(r.ticket);
+    } catch (err) { toast(err.message, 'err'); cat.value = prev; }
+  });
+
+  // A "change request" that's really a bug: reclassify it as an issue. The
+  // ticket keeps its number and history but leaves this board (which lists
+  // change requests only) and shows up as an Issue in the admin dashboard.
+  const convert = $('.dd-convert', host);
+  if (convert) convert.addEventListener('click', async () => {
+    if (!confirm(`Convert ${r.ticket} to an Issue?\n\nIt keeps its ticket number and history, but moves off this change-request board into the issues queue.`)) return;
+    convert.disabled = true;
+    try {
+      await editTicket(r.ticket, { type: 'issue' });
+      detailCache.delete(r.ticket);
+      if (lastData) lastData.requests = lastData.requests.filter((x) => x.ticket !== r.ticket);
+      toast(`${r.ticket} is now an Issue — it has moved off this board`, 'ok');
+      focusBack();
+    } catch (err) {
+      toast(err.message, 'err');
+      convert.disabled = false;
+    }
+  });
 }
 
 // The note box shown at the bottom of the Activity list in an expanded ticket.
@@ -580,7 +687,19 @@ document.addEventListener('click', (e) => {
   if (floatEl && !floatEl.contains(e.target)) closeFloat();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { if (floatEl) closeFloat(); else hideNoteHover(); }
+  if (e.key === 'Escape') {
+    if (floatEl) closeFloat();
+    else {
+      hideNoteHover();
+      if (focusTicket) focusBack(); // Esc closes the focus view too
+    }
+    return;
+  }
+  // ←/→ flip between tickets while in the focus view (but never while typing).
+  if (!focusTicket || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.closest('input, textarea, select')) return;
+  if (e.key === 'ArrowLeft') stepFocus(-1);
+  else if (e.key === 'ArrowRight') stepFocus(1);
 });
 
 // Quick add-a-note popover, launched from the notes column's + button.
@@ -634,6 +753,7 @@ async function load() {
     const data = await api('/api/review' + keyQS);
     detailCache.clear();
     render(data);
+    route(); // honor a #MM-1042 deep link, and refresh the focus nav counts
   } catch (err) {
     $('#sheet').classList.add('hidden');
     $('#loadErrorText').textContent = err.message;
@@ -645,4 +765,9 @@ async function load() {
 }
 
 $('#refreshBtn').addEventListener('click', load);
+$('#focusBack').addEventListener('click', focusBack);
+$('#focusPrev').addEventListener('click', () => stepFocus(-1));
+$('#focusNext').addEventListener('click', () => stepFocus(1));
+window.addEventListener('hashchange', route);
+if (ticketFromHash()) route(); // deep link: open the ticket while the board loads
 load();

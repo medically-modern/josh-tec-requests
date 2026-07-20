@@ -568,8 +568,8 @@ footer.site-foot a { color: var(--muted); }
 
 .sheet { background: var(--card); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
 .sheet-scroll { overflow-x: auto; max-height: calc(100vh - 210px); overflow-y: auto; }
-table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; min-width: 1320px; }
-.sheet-table th, .sheet-table td { border-right: 1px solid #dde4ea; border-bottom: 1px solid #dde4ea; padding: 8px 10px; text-align: left; vertical-align: top; }
+table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; min-width: 1120px; }
+.sheet-table th, .sheet-table td { border-right: 1px solid #dde4ea; border-bottom: 1px solid #dde4ea; padding: 6px 8px; text-align: left; vertical-align: top; }
 .sheet-table th:last-child, .sheet-table td:last-child { border-right: none; }
 .sheet-table thead th {
   position: sticky; top: 0; z-index: 2;
@@ -591,25 +591,33 @@ table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; f
 .sheet-empty td { color: var(--faint); font-style: italic; padding: 14px 12px; }
 
 .sheet-table td.col-ticket { white-space: nowrap; font-weight: 700; color: var(--accent-dark); }
-.sheet-table td.col-title { font-weight: 600; min-width: 160px; }
-.sheet-table td.col-desc { color: #33424f; white-space: pre-line; }
-.sheet-table .col-desc { min-width: 280px; max-width: 460px; }
+.sheet-table td.col-title { font-weight: 600; min-width: 140px; }
+.sheet-table td.col-desc { color: #33424f; }
+/* Long descriptions clamp to four lines on the board — the full text lives in
+   the ticket's focus view. Width constraints sit on the inner div (not the
+   td) so the column can genuinely shrink when the viewport is tight. */
+.col-desc .desc-clamp {
+  display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4;
+  -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line;
+  min-width: 200px; max-width: 360px;
+}
+/* On laptop-width screens give the description less room so the whole board
+   fits without sideways scrolling. */
+@media (max-width: 1520px) { .col-desc .desc-clamp { max-width: 240px; } }
 .sheet-table .col-sev, .sheet-table .col-status { white-space: nowrap; }
-.sheet-table .col-svc { min-width: 130px; }
+.sheet-table .col-svc { min-width: 110px; }
+.sheet-table th.col-svc { white-space: normal; } /* "Service / Tool Affected" wraps instead of forcing width */
 .sheet-table .col-by, .sheet-table .col-date { white-space: nowrap; }
+.sheet-table td.col-by { max-width: 108px; overflow: hidden; text-overflow: ellipsis; }
 .sheet-table .col-days { text-align: center; font-weight: 700; white-space: nowrap; }
 .sheet-table tr.sev-critical .col-days { color: var(--red); }
 .sheet-table tr.sev-high .col-days { color: var(--orange); }
 .sheet-table .col-notes { white-space: nowrap; text-align: right; width: 1%; }
 .sheet-table td.col-notes { cursor: default; }
 
-/* Review sheet — expandable ticket detail */
+/* Review sheet — clicking a row opens the ticket's full-page focus view */
 .sheet-row { cursor: pointer; }
-.sheet-row .caret { display: inline-block; margin-right: 6px; color: var(--faint); transition: transform .15s; }
-.sheet-row.expanded .caret { transform: rotate(90deg); color: var(--accent); }
-.sheet-row.expanded td { background: #eef6f9; }
-.row-meta { margin-top: 4px; font-size: 11.5px; font-weight: 500; color: var(--muted); white-space: nowrap; }
-.sheet-detail > td { background: #fbfdfe; padding: 14px 16px; border-bottom: 2px solid var(--border-strong); }
+.row-meta { margin-top: 4px; font-size: 11.5px; font-weight: 500; color: var(--muted); }
 .dd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 @media (max-width: 980px) { .dd-grid { grid-template-columns: 1fr; } }
 .dd-section { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
@@ -654,16 +662,17 @@ table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; f
 .grip-inline { letter-spacing: -2px; font-weight: 700; color: var(--faint); }
 
 /* Drag handle + reorder cues */
-.sheet-table .col-drag { width: 26px; text-align: center; color: var(--faint); cursor: grab; letter-spacing: -3px; user-select: none; }
+.sheet-table .col-drag { width: 26px; padding-left: 4px; padding-right: 4px; text-align: center; color: var(--faint); cursor: grab; letter-spacing: -3px; user-select: none; }
 .sheet-table td.col-drag:active { cursor: grabbing; }
 .sheet-row.dragging { opacity: .45; }
 .sheet-table tr.drop-before td { box-shadow: inset 0 3px 0 -1px var(--accent); }
 .sheet-table tr.drop-after td { box-shadow: inset 0 -3px 0 -1px var(--accent); }
 
 /* Inline priority + category editors */
-.sheet-table .col-patient, .sheet-table .col-cat { white-space: nowrap; }
+.sheet-table .col-cat { white-space: nowrap; }
+.sheet-table td.col-patient { max-width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cell-select {
-  width: 100%; min-width: 96px; padding: 5px 6px; border-radius: 7px;
+  width: 100%; min-width: 88px; padding: 5px 6px; border-radius: 7px;
   border: 1px solid var(--border-strong); background: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;
 }
 .cell-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(14, 116, 144, .15); }
@@ -671,16 +680,32 @@ table.sheet-table { width: 100%; border-collapse: separate; border-spacing: 0; f
 .sev-edit.sev-high { color: var(--orange); border-color: #fed7aa; background: #fff7ed; }
 .sev-edit.sev-medium { color: #a16207; border-color: #fde68a; background: #fefce8; }
 .sev-edit.sev-low { color: var(--slate); border-color: #e2e8f0; background: #f8fafc; }
-.sheet-table .col-cat .cat-edit { min-width: 150px; }
+.sheet-table .col-cat .cat-edit { min-width: 132px; }
 .cat-edit.cat-tec_implementation { color: var(--indigo); border-color: #c7d2fe; background: #eef2ff; }
 .cat-edit.cat-ops_review { color: var(--accent-dark); border-color: #bae6fd; background: var(--accent-soft); }
 
-/* Ticket-detail meta chips */
-.dd-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+/* ---- Focus view: one ticket as its own full page, board hidden ---- */
+.focus-view { max-width: 1100px; margin: 0 auto; }
+.focus-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 18px 0 14px; flex-wrap: wrap; }
+.focus-nav { display: flex; align-items: center; gap: 8px; }
+.focus-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 20px 22px; margin-bottom: 14px;
+}
+.focus-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.focus-ticket { font-family: var(--mono); font-weight: 800; font-size: 20px; color: var(--accent-dark); }
+.focus-controls { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.focus-controls label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.focus-controls .cell-select { width: auto; }
+.focus-title { font-size: 21px; line-height: 1.3; margin: 10px 0 12px; }
+.focus-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.focus-view .dd-msgs { max-height: none; } /* full page — let the thread breathe */
+
+/* Ticket meta chips (focus header) */
 .dd-chip { background: #fff; border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; font-size: 12.5px; color: var(--muted); }
 .dd-chip strong { color: var(--text); }
-.dd-chip .dd-convert { margin-left: 8px; padding: 2px 9px; font-size: 11.5px; border-radius: 999px; border-color: #fca5a5; color: var(--red); }
-.dd-chip .dd-convert:hover:not(:disabled) { background: var(--red-soft); }
+.dd-convert { padding: 2px 9px; font-size: 11.5px; border-radius: 999px; border-color: #fca5a5; color: var(--red); }
+.dd-convert:hover:not(:disabled) { background: var(--red-soft); }
 
 /* Note / activity attachments in the timeline */
 .tl-attach { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }

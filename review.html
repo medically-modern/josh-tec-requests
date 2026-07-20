@@ -23,44 +23,58 @@
 </header>
 
 <main class="wrap wide sheet-wrap">
-  <div class="sheet-toolbar">
-    <div class="sheet-counts" id="counts"></div>
-    <div class="sheet-updated">
-      <span id="updatedAt"></span>
-      <button class="btn btn-sm" id="refreshBtn" type="button">&#8635; Refresh</button>
+  <div id="boardView">
+    <div class="sheet-toolbar">
+      <div class="sheet-counts" id="counts"></div>
+      <div class="sheet-updated">
+        <span id="updatedAt"></span>
+        <button class="btn btn-sm" id="refreshBtn" type="button">&#8635; Refresh</button>
+      </div>
+    </div>
+
+    <div class="board-tabs" id="boardTabs"></div>
+    <p class="board-hint muted small">Drag the <span class="grip-inline">&#8942;&#8942;</span> handle to reorder &middot; edit Priority and Category inline &middot; click a row to open the full ticket &middot; changes save and sync everywhere</p>
+
+    <div id="loadState" class="card center muted"><span class="spinner dark"></span> Loading change requests&hellip;</div>
+    <div id="loadError" class="banner banner-error hidden"><span>&#9888;</span><div id="loadErrorText"></div></div>
+
+    <div class="sheet hidden" id="sheet">
+      <div class="sheet-scroll">
+        <table class="sheet-table">
+          <thead>
+            <tr>
+              <th class="col-drag" aria-label="Reorder"></th>
+              <th class="col-ticket">Ticket</th>
+              <th class="col-title">Request</th>
+              <th class="col-desc">Description</th>
+              <th class="col-patient">Patient</th>
+              <th class="col-sev">Priority</th>
+              <th class="col-cat">Category</th>
+              <th class="col-status">Status</th>
+              <th class="col-svc">Service / Tool Affected</th>
+              <th class="col-by">Reported By</th>
+              <th class="col-date">Reported</th>
+              <th class="col-days">Days</th>
+              <th class="col-notes">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="sheetBody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
-  <div class="board-tabs" id="boardTabs"></div>
-  <p class="board-hint muted small">Drag the <span class="grip-inline">&#8942;&#8942;</span> handle to reorder &middot; edit Priority and Category inline &middot; expand a row to convert a misfiled bug to an Issue &middot; changes save and sync everywhere</p>
-
-  <div id="loadState" class="card center muted"><span class="spinner dark"></span> Loading change requests&hellip;</div>
-  <div id="loadError" class="banner banner-error hidden"><span>&#9888;</span><div id="loadErrorText"></div></div>
-
-  <div class="sheet hidden" id="sheet">
-    <div class="sheet-scroll">
-      <table class="sheet-table">
-        <thead>
-          <tr>
-            <th class="col-drag" aria-label="Reorder"></th>
-            <th class="col-ticket">Ticket</th>
-            <th class="col-title">Request</th>
-            <th class="col-desc">Description</th>
-            <th class="col-patient">Patient</th>
-            <th class="col-sev">Priority</th>
-            <th class="col-cat">Category</th>
-            <th class="col-status">Status</th>
-            <th class="col-svc">Service / Tool Affected</th>
-            <th class="col-by">Reported By</th>
-            <th class="col-date">Date Reported</th>
-            <th class="col-days">Days Open</th>
-            <th class="col-notes">Notes</th>
-          </tr>
-        </thead>
-        <tbody id="sheetBody"></tbody>
-      </table>
+  <section class="focus-view hidden" id="focusView">
+    <div class="focus-bar">
+      <button type="button" class="btn btn-sm btn-ghost" id="focusBack" title="Back to the board (Esc)">&#8592; All change requests</button>
+      <div class="focus-nav hidden" id="focusNav">
+        <span class="small muted" id="focusPos"></span>
+        <button type="button" class="btn btn-sm btn-ghost" id="focusPrev" title="Previous ticket (&#8592;)">&#8592; Prev</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="focusNext" title="Next ticket (&#8594;)">Next &#8594;</button>
+      </div>
     </div>
-  </div>
+    <div id="focusBody"></div>
+  </section>
 
   <footer class="site-foot">
     Medically Modern &middot; Service Request Center<br>
