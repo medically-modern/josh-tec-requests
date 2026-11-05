@@ -40,12 +40,9 @@ endpoints give you full ticket content without any admin key:
 Fetch these with `WebFetch`. If a `REVIEW_KEY` is set on Railway, append
 `?key=<REVIEW_KEY>` (the link is open when it's unset — ask Josh if you get 401).
 
-> ⚠️ Caveat that bites: the backend in this repo (`server/src/index.js`) filters
-> the `/api/review` **list** to `type = 'change_request'` only. If/when that
-> version is the one deployed, `/api/review` will **stop listing issues** and you
-> won't be able to *enumerate* them from the public list (the per-ticket detail
-> endpoint still works for any number you already know). At that point, to get
-> the list of issue tickets, use the admin dashboard/API or ask Josh to export.
+> Note: `/api/review` lists **both** issues and change requests (open + in
+> progress). An earlier version filtered it to change requests only, which hid
+> issues from the board — don't reintroduce that filter.
 
 - Admin data (all tickets incl. completed, CSV export) lives behind
   `GET /api/admin/*` with an `x-admin-key: <ADMIN_KEY>` header. **`ADMIN_KEY`,

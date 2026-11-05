@@ -8,7 +8,7 @@ An internal system for employees to **report issues** and **request changes** to
 |---|---|---|
 | `index.html` | Employees | Submit an issue report or change request — service picker, severity, screenshots (drag & drop / paste), Loom links. Shows a ticket number and **server-verified attachment previews** on success. |
 | `status.html` | Employees | Track any ticket by ticket number + email. |
-| `review.html` | Company | Read-only **spreadsheet-style sheet of every unresolved request** (open + in progress), refreshed live on each load — change requests grouped on top, reported issues below. Share the link; no login. Optionally require `?key=…` by setting `REVIEW_KEY` on Railway. Submitter emails are never shown. |
+| `review.html` | Company | Read-only **spreadsheet-style sheet of every unresolved request** (open + in progress), refreshed live on each load — issues and change requests together, with Issues / Change requests tabs and a type badge on every row. Share the link; no login. Optionally require `?key=…` by setting `REVIEW_KEY` on Railway. Submitter emails are never shown. |
 | `admin.html` | Josh | Personal dashboard — Inbox, Board, Completed, Analytics, and Services views. Open it with your personal key link. |
 
 ## Architecture

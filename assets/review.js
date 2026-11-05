@@ -1,6 +1,6 @@
 'use strict';
-/* Company change-request board — spreadsheet style, change requests only.
-   Tabs (All / Tec Implementation / OPS Review), inline priority + category
+/* Company tec-request board — spreadsheet style, every open issue and change
+   request. Tabs (All / Issues / Change requests / Tec Implementation / OPS Review), inline priority + category
    editing (persisted and synced everywhere), drag-to-reorder (persisted),
    and collaborative notes with document attachments. Click a row to open the
    ticket in a focused full-page view (hash-routed, so review.html#MM-1042
@@ -20,7 +20,7 @@ const SEV_OPTS = ['critical', 'high', 'medium', 'low'];
 // Most recent board payload (requests kept in display order) so inline edits,
 // note additions and drags can update the view without a full refetch.
 let lastData = null;
-let currentTab = 'all'; // 'all' | 'tec_implementation' | 'ops_review'
+let currentTab = 'all'; // 'all' | 'issue' | 'change_request' | 'tec_implementation' | 'ops_review'
 
 function daysOpen(created) {
   const days = Math.floor((Date.now() - new Date(created).getTime()) / 86400000);
@@ -78,7 +78,7 @@ function catSelect(r) {
 function requestRow(r, idx) {
   return `<tr class="sheet-row ${idx % 2 ? 'band' : ''} sev-${esc(r.severity)}" data-ticket="${esc(r.ticket)}" draggable="true" title="Drag to reorder · click to open">
     <td class="col-drag" title="Drag to reorder">&#8942;&#8942;</td>
-    <td class="col-ticket mono">${esc(r.ticket)}</td>
+    <td class="col-ticket mono">${esc(r.ticket)}<div class="row-type">${typeBadge(r.type)}</div></td>
     <td class="col-title">${esc(r.title)}${metaChips(r)}</td>
     <td class="col-desc"><div class="desc-clamp">${esc(r.description)}</div></td>
     <td class="col-patient"${r.patient_name ? ` title="${esc(r.patient_name)}"` : ''}>${r.patient_name ? esc(r.patient_name) : '<span class="faint">—</span>'}</td>
@@ -98,13 +98,17 @@ function requestRow(r, idx) {
 
 function visibleRequests() {
   const reqs = lastData ? lastData.requests : [];
-  return currentTab === 'all' ? reqs : reqs.filter((r) => r.category === currentTab);
+  if (currentTab === 'all') return reqs;
+  if (currentTab === 'issue' || currentTab === 'change_request') return reqs.filter((r) => r.type === currentTab);
+  return reqs.filter((r) => r.category === currentTab);
 }
 
 function renderTabs() {
   const reqs = lastData ? lastData.requests : [];
   const defs = [
     { key: 'all', label: 'All', count: reqs.length },
+    { key: 'issue', label: 'Issues', count: reqs.filter((r) => r.type === 'issue').length },
+    { key: 'change_request', label: 'Change requests', count: reqs.filter((r) => r.type === 'change_request').length },
     { key: 'tec_implementation', label: 'Tec Implementation', count: reqs.filter((r) => r.category === 'tec_implementation').length },
     { key: 'ops_review', label: 'OPS Review', count: reqs.filter((r) => r.category === 'ops_review').length },
   ];
@@ -121,7 +125,7 @@ function renderTabs() {
 function renderRows() {
   const rows = visibleRequests();
   if (!rows.length) {
-    $('#sheetBody').innerHTML = `<tr class="sheet-empty"><td colspan="${COLSPAN}">No change requests${currentTab === 'all' ? '' : ' in this tab'} right now.</td></tr>`;
+    $('#sheetBody').innerHTML = `<tr class="sheet-empty"><td colspan="${COLSPAN}">No open requests${currentTab === 'all' ? '' : ' in this tab'} right now.</td></tr>`;
     return;
   }
   $('#sheetBody').innerHTML = rows.map((r, i) => requestRow(r, i)).join('');
@@ -137,8 +141,12 @@ function resortAndRerender() {
 }
 
 function renderCounts() {
-  const n = lastData ? lastData.requests.length : 0;
-  $('#counts').innerHTML = `<span class="chip chip-change">${n} open change request${n === 1 ? '' : 's'}</span>`;
+  const reqs = lastData ? lastData.requests : [];
+  const ni = reqs.filter((r) => r.type === 'issue').length;
+  const nc = reqs.length - ni;
+  $('#counts').innerHTML =
+    `<span class="chip chip-issue">${ni} open issue${ni === 1 ? '' : 's'}</span> ` +
+    `<span class="chip chip-change">${nc} open change request${nc === 1 ? '' : 's'}</span>`;
 }
 
 function render(data) {
@@ -300,16 +308,16 @@ function attachmentsHtml(list) {
 }
 
 // The header card at the top of the focus view: ticket number, status, title,
-// inline priority/category editors, meta chips, and the convert-to-issue
-// escape hatch. Deep links can reach tickets that aren't on the board
-// (completed ones, or issues) — those get a small explanatory banner.
+// inline priority/category editors, meta chips, and the issue ⇄ change-request
+// toggle. Deep links can reach tickets that aren't on the board (completed or
+// declined ones) — those get a small explanatory banner.
 function focusHeaderHtml(r) {
-  const onBoard = r.type === 'change_request' && (r.status === 'open' || r.status === 'in_progress');
+  const onBoard = r.status === 'open' || r.status === 'in_progress';
   return `<article class="focus-card">
     <div class="focus-title-row">
       <span class="focus-ticket">${esc(r.ticket)}</span>
       ${statusBadge(r.status)}
-      ${r.type === 'issue' ? typeBadge(r.type) : ''}
+      ${typeBadge(r.type)}
       <span class="focus-controls">
         <label>Priority ${sevSelect(r)}</label>
         <label>Category ${catSelect(r)}</label>
@@ -321,9 +329,11 @@ function focusHeaderHtml(r) {
       <span class="dd-chip">Reported by <strong>${esc(r.submitter_name)}</strong></span>
       <span class="dd-chip">${esc(fmtDay(r.created_at))} &middot; <strong>${esc(daysOpen(r.created_at))}d open</strong></span>
       ${r.patient_name ? `<span class="dd-chip">&#129492; Patient: <strong>${esc(r.patient_name)}</strong></span>` : ''}
-      ${r.type === 'change_request' ? '<button type="button" class="btn btn-sm btn-ghost dd-convert" title="Filed as a change request but really a bug? Reclassify it as an issue.">&#9888; Actually a bug &mdash; convert to Issue</button>' : ''}
+      ${r.type === 'change_request'
+        ? '<button type="button" class="btn btn-sm btn-ghost dd-convert" title="Filed as a change request but really a bug? Reclassify it as an issue.">&#9888; Actually a bug &mdash; convert to Issue</button>'
+        : '<button type="button" class="btn btn-sm btn-ghost dd-convert" title="Filed as an issue but really a change request? Reclassify it.">&#8644; Convert to Change request</button>'}
     </div>
-    ${onBoard ? '' : `<div class="banner banner-info small" style="margin:12px 0 0"><span>&#8505;&#65039;</span><div>This ticket is ${esc(TYPE_LABEL[r.type] || r.type)} &middot; ${esc(STATUS_LABEL[r.status] || r.status)}, so it isn't listed on the open change-request board.</div></div>`}
+    ${onBoard ? '' : `<div class="banner banner-info small" style="margin:12px 0 0"><span>&#8505;&#65039;</span><div>This ticket is ${esc(TYPE_LABEL[r.type] || r.type)} &middot; ${esc(STATUS_LABEL[r.status] || r.status)}, so it isn't listed on the open board.</div></div>`}
   </article>`;
 }
 
@@ -426,7 +436,7 @@ async function openFocus(ticket) {
   focusTicket = ticket;
   $('#boardView').classList.add('hidden');
   $('#focusView').classList.remove('hidden');
-  document.title = `${ticket} — Change Requests`;
+  document.title = `${ticket} — Tec Requests`;
   window.scrollTo(0, 0);
   renderFocusNav();
   const cached = detailCache.get(ticket);
@@ -460,7 +470,7 @@ function showBoard() {
   focusTicket = null;
   $('#focusView').classList.add('hidden');
   $('#boardView').classList.remove('hidden');
-  document.title = 'Change Requests — Medically Modern Service Desk';
+  document.title = 'Tec Requests — Medically Modern Service Desk';
   // Drop a dangling '#' so the URL stays clean and shareable. (location.hash
   // is already '' after `location.hash = ''`, but the '#' stays in the URL.)
   if (window.location.href.includes('#')) history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -572,19 +582,21 @@ function wireFocus(host, data) {
     } catch (err) { toast(err.message, 'err'); cat.value = prev; }
   });
 
-  // A "change request" that's really a bug: reclassify it as an issue. The
-  // ticket keeps its number and history but leaves this board (which lists
-  // change requests only) and shows up as an Issue in the admin dashboard.
+  // Reclassify issue ⇄ change request. The ticket keeps its number, history
+  // and place on the board; only its type (and tab) changes.
   const convert = $('.dd-convert', host);
   if (convert) convert.addEventListener('click', async () => {
-    if (!confirm(`Convert ${r.ticket} to an Issue?\n\nIt keeps its ticket number and history, but moves off this change-request board into the issues queue.`)) return;
+    const to = r.type === 'issue' ? 'change_request' : 'issue';
+    if (!confirm(`Convert ${r.ticket} to ${to === 'issue' ? 'an Issue' : 'a Change request'}?\n\nIt keeps its ticket number and history.`)) return;
     convert.disabled = true;
     try {
-      await editTicket(r.ticket, { type: 'issue' });
+      await editTicket(r.ticket, { type: to });
       detailCache.delete(r.ticket);
-      if (lastData) lastData.requests = lastData.requests.filter((x) => x.ticket !== r.ticket);
-      toast(`${r.ticket} is now an Issue — it has moved off this board`, 'ok');
-      focusBack();
+      const row = lastData && lastData.requests.find((x) => x.ticket === r.ticket);
+      if (row) row.type = to;
+      toast(`${r.ticket} is now ${to === 'issue' ? 'an Issue' : 'a Change request'}`, 'ok');
+      renderCounts(); renderTabs(); renderRows();
+      reloadFocus(r.ticket);
     } catch (err) {
       toast(err.message, 'err');
       convert.disabled = false;

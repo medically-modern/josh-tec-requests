@@ -477,7 +477,7 @@ app.get('/api/review', rateLimit('review', 60, 60000), asyncRoute(async (req, re
                        json_agg(json_build_object('actor', actor, 'detail', detail, 'created_at', created_at)
                                 ORDER BY created_at DESC) AS notes
                 FROM activity WHERE action = 'review_note' GROUP BY request_id) nt ON nt.request_id = r.id
-     WHERE r.type = 'change_request' AND r.status IN ('open', 'in_progress')
+     WHERE r.status IN ('open', 'in_progress')
      ORDER BY r.board_position ASC NULLS LAST,
               CASE r.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
               r.created_at`
